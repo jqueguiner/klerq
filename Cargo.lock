@@ -2269,10 +2269,23 @@ dependencies = [
  "eframe",
  "klerq-calc",
  "klerq-core",
+ "klerq-format",
  "klerq-i18n",
  "klerq-plugin",
  "klerq-slides",
  "klerq-writer",
+]
+
+[[package]]
+name = "klerq-format"
+version = "0.1.0"
+dependencies = [
+ "klerq-calc",
+ "klerq-slides",
+ "klerq-writer",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

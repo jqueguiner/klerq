@@ -58,6 +58,8 @@ struct KlerqApp {
     plugin_src: String,
     plugin_input: String,
     plugin_out: String,
+    // File I/O feedback
+    file_status: String,
 }
 
 impl KlerqApp {
@@ -93,6 +95,7 @@ impl KlerqApp {
             plugin_src: SAMPLE_PLUGIN.to_string(),
             plugin_input: "make me loud".to_string(),
             plugin_out: String::new(),
+            file_status: String::new(),
         };
         apply_theme(&cc.egui_ctx, app.dark);
         app
@@ -155,8 +158,18 @@ impl KlerqApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button(self.ws.t("menu-file"), |ui| {
                     let _ = ui.button(self.ws.t("action-new"));
-                    let _ = ui.button(self.ws.t("action-open"));
-                    let _ = ui.button(self.ws.t("action-save"));
+                    if ui.button(self.ws.t("action-open")).clicked() {
+                        let n = self.ws.load_all(std::path::Path::new("."));
+                        self.file_status = format!("Opened {n} document(s) from ./klerq.*");
+                        ui.close_menu();
+                    }
+                    if ui.button(self.ws.t("action-save")).clicked() {
+                        self.file_status = match self.ws.save_all(std::path::Path::new(".")) {
+                            Ok(p) => format!("Saved {} files (klerq.klw/.klc/.kls)", p.len()),
+                            Err(e) => format!("Save failed: {e}"),
+                        };
+                        ui.close_menu();
+                    }
                 });
                 ui.menu_button(self.ws.t("menu-edit"), |ui| {
                     if ui.button(self.ws.t("action-undo")).clicked() {
@@ -258,6 +271,10 @@ impl KlerqApp {
                 );
                 ui.separator();
                 ui.label(self.ws.status()); // localized word count
+                if !self.file_status.is_empty() {
+                    ui.separator();
+                    ui.label(egui::RichText::new(&self.file_status).weak());
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(self.ws.locale.current_locale()).weak());
                 });

@@ -41,7 +41,8 @@ klerq/
 │   ├── plugin/   klerq-plugin  sandboxed JavaScript plugin host (boa)
 │   ├── writer/   klerq-writer  word processor: paragraphs, runs, styles
 │   ├── calc/     klerq-calc    spreadsheet: cells, formula parser/evaluator, recalc
-│   └── slides/   klerq-slides  presentations: slides, shapes, ordering
+│   ├── slides/   klerq-slides  presentations: slides, shapes, ordering
+│   └── format/   klerq-format  save/load: native .klw/.klc/.kls + text/CSV/outline
 ├── apps/
 │   └── desktop/  klerq-desktop shell binary composing every engine
 ├── locales/      en-US, fr-FR  Fluent translation files (add your language here)
@@ -104,6 +105,15 @@ function transform(text) {
 
 The host runs it in isolation — `fetch`, `require`, and filesystem access simply
 do not exist in the sandbox.
+
+## Files & formats
+
+Save/Open in the File menu writes the three open documents as **native** Klerq
+files — `klerq.klw` (Writer), `klerq.klc` (Calc), `klerq.kls` (Slides) — a
+versioned JSON envelope that round-trips losslessly (formulas preserved). The
+`klerq-format` crate also does interop: Writer ⇄ plain text, Calc ⇄ CSV
+(evaluated values out, `=formulas` in), Slides ⇄ Markdown-ish outline. Full MS
+Office `.docx`/`.xlsx`/`.pptx` (OOXML) is the next phase.
 
 ## Adding a language
 

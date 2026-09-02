@@ -76,7 +76,46 @@ pub fn parse_a1(s: &str) -> Option<Addr> {
 /// The spreadsheet grid.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Sheet {
+    // JSON maps require string keys, so (col,row) tuple keys are stored on disk
+    // as a sorted list of entries — deterministic and diff-friendly.
+    #[serde(with = "cells_serde")]
     cells: HashMap<(u32, u32), Cell>,
+}
+
+mod cells_serde {
+    use super::Cell;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    #[derive(Serialize, Deserialize)]
+    struct Entry {
+        col: u32,
+        row: u32,
+        cell: Cell,
+    }
+
+    pub fn serialize<S: Serializer>(
+        map: &HashMap<(u32, u32), Cell>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        let mut v: Vec<Entry> = map
+            .iter()
+            .map(|(&(col, row), cell)| Entry {
+                col,
+                row,
+                cell: cell.clone(),
+            })
+            .collect();
+        v.sort_by_key(|e| (e.row, e.col));
+        v.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<HashMap<(u32, u32), Cell>, D::Error> {
+        let v: Vec<Entry> = Vec::deserialize(d)?;
+        Ok(v.into_iter().map(|e| ((e.col, e.row), e.cell)).collect())
+    }
 }
 
 impl Sheet {
@@ -110,6 +149,16 @@ impl Sheet {
             .get(&(addr.col, addr.row))
             .cloned()
             .unwrap_or(Cell::Empty)
+    }
+
+    /// Inclusive bounding box of non-empty cells as `(max_col, max_row)`,
+    /// or `None` when the sheet is empty. Used to bound CSV/table export.
+    pub fn extent(&self) -> Option<(u32, u32)> {
+        self.cells
+            .iter()
+            .filter(|(_, c)| !matches!(c, Cell::Empty))
+            .map(|(&(c, r), _)| (c, r))
+            .reduce(|(mc, mr), (c, r)| (mc.max(c), mr.max(r)))
     }
 
     /// Evaluate a cell to a number (the common case for formulas).
@@ -343,6 +392,16 @@ mod tests {
         let mut s = Sheet::new();
         s.set("A1", "=A1+1");
         assert!(matches!(s.eval_number("A1"), Err(CalcError::Cycle(_))));
+    }
+
+    #[test]
+    fn extent_bounds_non_empty_cells() {
+        let mut s = Sheet::new();
+        assert_eq!(s.extent(), None);
+        s.set("A1", "1");
+        s.set("C3", "9");
+        s.set("B2", ""); // empty → ignored
+        assert_eq!(s.extent(), Some((2, 2))); // C3 => col2,row2
     }
 
     #[test]

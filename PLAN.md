@@ -31,7 +31,8 @@ klerq/
 │   ├── plugin/   klerq-plugin  # JS runtime host (boa), plugin API, sandbox
 │   ├── writer/   klerq-writer  # text document engine (paragraphs, runs, styles)
 │   ├── calc/     klerq-calc    # spreadsheet engine (cells, formulas, deps)
-│   └── slides/   klerq-slides  # presentation engine (slides, shapes)
+│   ├── slides/   klerq-slides  # presentation engine (slides, shapes)
+│   └── format/   klerq-format  # native save/load + text/CSV/outline interop
 ├── apps/
 │   └── desktop/  klerq-desktop # shell binary tying crates together (`klerq`)
 ├── locales/                    # .ftl translation files per language (en-US, fr-FR)
@@ -59,9 +60,10 @@ klerq/
 - **Phase 6 — slides** ✅ slides/shapes model + reorder. (5 tests)
 - **Phase 6.5 — desktop shell** ✅ `Workspace` composes all engines; text demo. (11 tests)
 - **Phase 7 — egui front-end** ✅ windowed `klerq-gui`: app-rail, Writer/Calc/Slides/Plugins views, formula bar + live grid, slide canvas, JS plugin runner, dark/light, live locale switch + RTL.
-- **Phase 8 — file formats** ⏳ native save/load; MS Office (OOXML) interop later.
+- **Phase 8 — file formats** ✅ `klerq-format`: versioned native save/load (`.klw`/`.klc`/`.kls`) with kind+version guards; interop — Writer↔plain-text, Calc↔CSV (evaluated out, formulas in), Slides↔outline. Wired into the GUI File menu (Save/Open). (13 tests)
+- **Phase 9 — OOXML interop** ⏳ read/write `.docx`/`.xlsx`/`.pptx`.
 
-**Current status:** 56 tests green; `cargo test`, `cargo clippy -D warnings`,
+**Current status:** 70 tests green; `cargo test`, `cargo clippy -D warnings`,
 `cargo fmt --check` all pass. GUI builds on all desktop targets.
 
 ## Definition of done (per crate)

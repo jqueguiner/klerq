@@ -152,6 +152,50 @@ impl Workspace {
         self.locale.t(key)
     }
 
+    /// Save all three documents into `dir` as native Klerq files
+    /// (`klerq.klw` / `.klc` / `.kls`). Returns the written paths.
+    pub fn save_all(&self, dir: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
+        use klerq_format::{save_calc, save_slides, save_writer, EXT_CALC, EXT_SLIDES, EXT_WRITER};
+        let mut out = Vec::new();
+        let jobs: [(&str, String); 3] = [
+            (EXT_WRITER, save_writer(&self.writer)),
+            (EXT_CALC, save_calc(&self.calc)),
+            (EXT_SLIDES, save_slides(&self.slides)),
+        ];
+        for (ext, data) in jobs {
+            let path = dir.join(format!("klerq.{ext}"));
+            std::fs::write(&path, data)?;
+            out.push(path);
+        }
+        Ok(out)
+    }
+
+    /// Load whichever native Klerq files exist in `dir`, replacing the current
+    /// documents. Returns how many documents were loaded.
+    pub fn load_all(&mut self, dir: &std::path::Path) -> usize {
+        use klerq_format::{load_calc, load_slides, load_writer, EXT_CALC, EXT_SLIDES, EXT_WRITER};
+        let mut loaded = 0;
+        if let Ok(t) = std::fs::read_to_string(dir.join(format!("klerq.{EXT_WRITER}"))) {
+            if let Ok(d) = load_writer(&t) {
+                self.writer = d;
+                loaded += 1;
+            }
+        }
+        if let Ok(t) = std::fs::read_to_string(dir.join(format!("klerq.{EXT_CALC}"))) {
+            if let Ok(d) = load_calc(&t) {
+                self.calc = d;
+                loaded += 1;
+            }
+        }
+        if let Ok(t) = std::fs::read_to_string(dir.join(format!("klerq.{EXT_SLIDES}"))) {
+            if let Ok(d) = load_slides(&t) {
+                self.slides = d;
+                loaded += 1;
+            }
+        }
+        loaded
+    }
+
     /// One-line localized status summarizing the session.
     pub fn status(&self) -> String {
         let words = self.writer.word_count().to_string();
@@ -314,6 +358,29 @@ mod tests {
         assert_eq!(fmt_num(30.0), "30");
         assert_eq!(fmt_num(2.5), "2.5");
         assert_eq!(fmt_num(-3.0), "-3");
+    }
+
+    #[test]
+    fn save_all_then_load_all_roundtrips() {
+        let dir = std::env::temp_dir().join(format!("klerq-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut ws = Workspace::new();
+        ws.write_paragraph("persisted paragraph");
+        ws.set_cell("A1", "7");
+        ws.set_cell("A2", "=A1*3");
+        ws.add_slide("Saved deck");
+        let paths = ws.save_all(&dir).unwrap();
+        assert_eq!(paths.len(), 3);
+
+        // Fresh session loads the files back.
+        let mut ws2 = Workspace::new();
+        assert_eq!(ws2.load_all(&dir), 3);
+        assert_eq!(ws2.writer.plain_text(), "persisted paragraph");
+        assert_eq!(ws2.calc.eval_number("A2").unwrap(), 21.0);
+        assert_eq!(ws2.slides.slides[0].title, "Saved deck");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

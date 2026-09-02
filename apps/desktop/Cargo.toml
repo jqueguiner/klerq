@@ -28,4 +28,5 @@ klerq-plugin = { workspace = true }
 klerq-writer = { workspace = true }
 klerq-calc = { workspace = true }
 klerq-slides = { workspace = true }
+klerq-format = { workspace = true }
 eframe = "0.28"

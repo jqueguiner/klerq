@@ -7,6 +7,7 @@ members = [
     "crates/writer",
     "crates/calc",
     "crates/slides",
+    "crates/format",
     "apps/desktop",
 ]
 
@@ -33,3 +34,4 @@ klerq-plugin = { path = "crates/plugin" }
 klerq-writer = { path = "crates/writer" }
 klerq-calc = { path = "crates/calc" }
 klerq-slides = { path = "crates/slides" }
+klerq-format = { path = "crates/format" }
