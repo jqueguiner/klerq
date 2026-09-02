@@ -135,9 +135,11 @@ link + a Graph OAuth token in the AI tab, pick a worksheet/range, then Open or
 Push. (Joining Microsoft's live Fluid co-auth session isn't a public path, but
 Graph gives genuine bidirectional sync.)
 
-**Google Sheets.** Paste a sheet link in the AI tab to **open a public sheet**
-(CSV export, zero auth) into Calc, with **auto-poll** for near-real-time reads.
-Write the grid back through the official Sheets API v4 with an OAuth token.
+**Google Sheets + Google SSO.** **Sign in with Google** (OAuth 2.0 desktop flow —
+browser SSO, PKCE with S256, loopback redirect) to read/write your **private**
+sheets. Or paste a link to **open a public sheet** (CSV export, zero auth) with
+**auto-poll** for near-real-time reads. Write the grid back via Sheets API v4
+(uses your signed-in token, or a pasted one).
 (Google's *live* editing runs over a private, undocumented protocol no
 third-party client can join — so this is read-now + poll + API write, not a join
 of Google's realtime session.) For true multi-user realtime, use Klerq's own

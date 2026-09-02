@@ -78,6 +78,8 @@ struct KlerqApp {
     gsheet_auto: bool,
     gsheet_interval: f32,
     gsheet_last: f64,
+    g_client_id: String,
+    g_secret: String,
     // Microsoft 365 / Excel Online
     ms_url: String,
     ms_token: String,
@@ -136,6 +138,8 @@ impl KlerqApp {
             gsheet_auto: false,
             gsheet_interval: 10.0,
             gsheet_last: 0.0,
+            g_client_id: String::new(),
+            g_secret: String::new(),
             ms_url: String::new(),
             ms_token: String::new(),
             ms_ws: "Sheet1".to_string(),
@@ -882,21 +886,51 @@ impl KlerqApp {
                     .suffix(" s"),
             );
         });
+        // Sign in with Google (SSO) — enables private sheets + write-back.
         ui.horizontal(|ui| {
             ui.add(
-                egui::TextEdit::singleline(&mut self.gsheet_token)
-                    .password(true)
-                    .hint_text("OAuth access token (for write-back)")
-                    .desired_width(320.0),
+                egui::TextEdit::singleline(&mut self.g_client_id)
+                    .hint_text("Google OAuth client id (Desktop app)")
+                    .desired_width(240.0),
             );
+            ui.add(
+                egui::TextEdit::singleline(&mut self.g_secret)
+                    .password(true)
+                    .hint_text("client secret")
+                    .desired_width(150.0),
+            );
+            if self.ws.google_signed_in() {
+                ui.label(
+                    egui::RichText::new("✓ Signed in").color(egui::Color32::from_rgb(52, 199, 89)),
+                );
+            } else if ui.button("🔐 Sign in with Google").clicked()
+                && !self.g_client_id.trim().is_empty()
+            {
+                self.gsheet_status = match self.ws.google_login(&self.g_client_id, &self.g_secret) {
+                    Ok(()) => "Signed in with Google — private sheets enabled".into(),
+                    Err(e) => format!("Sign-in failed: {e}"),
+                };
+            }
+        });
+        ui.horizontal(|ui| {
+            let token = if self.ws.google_signed_in() {
+                self.ws.google_token.clone()
+            } else {
+                self.gsheet_token.clone()
+            };
+            if !self.ws.google_signed_in() {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.gsheet_token)
+                        .password(true)
+                        .hint_text("…or paste an OAuth token for write-back")
+                        .desired_width(320.0),
+                );
+            }
             if ui.button("⬆ Push to Sheet").clicked()
                 && !self.gsheet_url.trim().is_empty()
-                && !self.gsheet_token.trim().is_empty()
+                && !token.trim().is_empty()
             {
-                self.gsheet_status = match self
-                    .ws
-                    .push_google_sheet(&self.gsheet_url, &self.gsheet_token)
-                {
+                self.gsheet_status = match self.ws.push_google_sheet(&self.gsheet_url, &token) {
                     Ok(()) => "Pushed current sheet to Google".into(),
                     Err(e) => format!("Push failed: {e}"),
                 };

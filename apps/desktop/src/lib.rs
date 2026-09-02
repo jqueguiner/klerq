@@ -73,6 +73,8 @@ pub struct Workspace {
     pub ai: klerq_ai::AiConfig,
     /// Real-time collaboration session (CRDT) for Calc.
     pub collab: klerq_sync::Session,
+    /// Google OAuth access token (set after SSO); empty = not signed in.
+    pub google_token: String,
     writer_stack: CommandStack<TextDocument>,
     slides_stack: CommandStack<Presentation>,
 }
@@ -104,6 +106,7 @@ impl Workspace {
             slides: Presentation::new(),
             ai: klerq_ai::AiConfig::new(klerq_ai::Provider::OpenAI, ""),
             collab: klerq_sync::Session::new(std::process::id() as u64),
+            google_token: String::new(),
             writer_stack: CommandStack::new(),
             slides_stack: CommandStack::new(),
         }
@@ -401,13 +404,35 @@ impl Workspace {
             .collect()
     }
 
-    /// Open a Google Sheet from its share/edit link (public sheet, no auth) and
-    /// import it into Calc. Returns the row count.
+    /// Sign in to Google (SSO): opens the browser, catches the loopback
+    /// redirect, and stores an access token for private-sheet access.
+    /// `client_id`/`client_secret` come from a Google "Desktop app" credential.
+    pub fn google_login(&mut self, client_id: &str, client_secret: &str) -> Result<(), String> {
+        let cfg = klerq_ai::google::OAuthConfig::sheets(client_id, client_secret, 8585);
+        let tokens = klerq_ai::google::run_loopback_login(&cfg).map_err(|e| e.to_string())?;
+        self.google_token = tokens.access_token;
+        Ok(())
+    }
+
+    /// True once signed in with Google.
+    pub fn google_signed_in(&self) -> bool {
+        !self.google_token.trim().is_empty()
+    }
+
+    /// Open a Google Sheet from its link into Calc. When signed in (SSO), reads
+    /// **private** sheets via the Sheets API; otherwise falls back to the public
+    /// CSV export. Returns the row count.
     pub fn open_google_sheet(&mut self, url: &str) -> Result<usize, String> {
         let r = klerq_ai::google::parse_sheet_url(url)
             .ok_or_else(|| "not a Google Sheets link".to_string())?;
-        let csv = klerq_ai::google::fetch_public_csv(&r).map_err(|e| e.to_string())?;
-        Ok(self.import_csv_text(&csv))
+        if self.google_signed_in() {
+            let grid = klerq_ai::google::get_values(&r.id, "A1:Z1000", &self.google_token)
+                .map_err(|e| e.to_string())?;
+            Ok(self.apply_grid(&grid))
+        } else {
+            let csv = klerq_ai::google::fetch_public_csv(&r).map_err(|e| e.to_string())?;
+            Ok(self.import_csv_text(&csv))
+        }
     }
 
     /// Write the current Calc grid back to a Google Sheet via the v4 API
