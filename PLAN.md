@@ -67,6 +67,8 @@ klerq/
 
 - **Calc engine (ongoing)** ✅ comparisons `= <> < > <= >=`, lazy `IF`, `AND/OR/NOT`, `PRODUCT`, `ABS/INT/ROUND/MOD/POWER/SQRT/CEILING/FLOOR` added on top of SUM/AVERAGE/MIN/MAX/COUNT.
 - **i18n (ongoing)** ✅ 14 bundled locales incl RTL Arabic + Hebrew, parity-tested; GUI rail mirrors under RTL.
+- **Calc functions (ongoing)** ✅ 148-function library (math/trig/stats/financial/forecasting) via `functions.rs` registry + GUI palette.
+- **AI (ongoing)** ✅ `klerq-ai` crate: OpenAI/Anthropic/Gemini/OpenAI-compatible providers, locally-stored config+key, request-build + response-parse tested; GUI AI tab: NL→formula assistant grounded in the function library, plus CSV-from-URL data import.
 
 **Current status:** 93 tests green; `cargo test`, `cargo clippy -D warnings`,
 `cargo fmt --check` all pass. GUI builds on all desktop targets.

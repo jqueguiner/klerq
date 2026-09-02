@@ -1,4 +1,13 @@
 /target
+# Local AI provider config — contains API keys, never commit.
+klerq-ai.json
+# Local document files written by the demo/app.
+klerq.klw
+klerq.klc
+klerq.kls
+klerq.docx
+klerq.xlsx
+klerq.pptx
 **/*.rs.bk
 Cargo.lock.orig
 .DS_Store

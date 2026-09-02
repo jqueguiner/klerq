@@ -1,0 +1,15 @@
+[package]
+name = "klerq-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Klerq AI — pluggable LLM providers (OpenAI, Anthropic, Gemini, custom) + formula assistant."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ureq = { workspace = true }

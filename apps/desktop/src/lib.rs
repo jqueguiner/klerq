@@ -69,6 +69,8 @@ pub struct Workspace {
     pub writer: TextDocument,
     pub calc: Sheet,
     pub slides: Presentation,
+    /// AI provider configuration (key, model, base URL).
+    pub ai: klerq_ai::AiConfig,
     writer_stack: CommandStack<TextDocument>,
     slides_stack: CommandStack<Presentation>,
 }
@@ -86,6 +88,7 @@ impl Workspace {
             writer: TextDocument::new(),
             calc: Sheet::new(),
             slides: Presentation::new(),
+            ai: klerq_ai::AiConfig::new(klerq_ai::Provider::OpenAI, ""),
             writer_stack: CommandStack::new(),
             slides_stack: CommandStack::new(),
         }
@@ -295,6 +298,49 @@ impl Workspace {
             }
         }
         n
+    }
+
+    /// Persist the AI configuration (provider, key, model) to `dir/klerq-ai.json`.
+    pub fn save_ai(&self, dir: &std::path::Path) -> Result<(), String> {
+        self.ai
+            .save_to(&dir.join("klerq-ai.json"))
+            .map_err(|e| e.to_string())
+    }
+
+    /// Load AI configuration from `dir/klerq-ai.json` if present.
+    pub fn load_ai(&mut self, dir: &std::path::Path) -> bool {
+        match klerq_ai::AiConfig::load_from(&dir.join("klerq-ai.json")) {
+            Ok(cfg) => {
+                self.ai = cfg;
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Ask the configured AI to build a Calc formula for a natural-language
+    /// request, grounded in the real function library.
+    pub fn suggest_formula(&self, prompt: &str) -> Result<String, String> {
+        klerq_ai::suggest_formula(&self.ai, prompt, klerq_calc::FUNCTION_NAMES)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Free-form AI chat (returns the assistant's reply).
+    pub fn ai_chat(&self, prompt: &str) -> Result<String, String> {
+        klerq_ai::chat(&self.ai, None, &[klerq_ai::Msg::user(prompt)]).map_err(|e| e.to_string())
+    }
+
+    /// Import CSV from a URL (a "data connection") into Calc, replacing the sheet.
+    pub fn import_csv_url(&mut self, url: &str) -> Result<usize, String> {
+        let body = klerq_ai::http_get(url).map_err(|e| e.to_string())?;
+        self.calc = klerq_format::calc_from_csv(&body);
+        Ok(body.lines().filter(|l| !l.is_empty()).count())
+    }
+
+    /// Import CSV text (paste / file) into Calc, replacing the sheet.
+    pub fn import_csv_text(&mut self, csv: &str) -> usize {
+        self.calc = klerq_format::calc_from_csv(csv);
+        csv.lines().filter(|l| !l.is_empty()).count()
     }
 
     /// One-line localized status summarizing the session.
@@ -562,6 +608,37 @@ mod tests {
         assert_eq!(ws2.slides.slides[0].title, "Deck title");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ai_config_persists_through_workspace() {
+        let dir = std::env::temp_dir().join(format!("klerq-ws-ai-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut ws = Workspace::new();
+        ws.ai = klerq_ai::AiConfig::new(klerq_ai::Provider::Gemini, "g-key");
+        ws.ai.model = "gemini-2.0-flash".into();
+        ws.save_ai(&dir).unwrap();
+
+        let mut ws2 = Workspace::new();
+        assert!(ws2.load_ai(&dir));
+        assert_eq!(ws2.ai.provider, klerq_ai::Provider::Gemini);
+        assert_eq!(ws2.ai.api_key, "g-key");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn suggest_formula_without_key_errors() {
+        let ws = Workspace::new(); // empty key
+        assert!(ws.suggest_formula("sum of A1 to A10").is_err());
+    }
+
+    #[test]
+    fn csv_text_import_into_calc() {
+        let mut ws = Workspace::new();
+        let rows = ws.import_csv_text("Item,Qty\nWidgets,10\nTotal,=B2+5");
+        assert_eq!(rows, 3);
+        assert_eq!(ws.calc.eval_number("B2").unwrap(), 10.0);
+        assert_eq!(ws.calc.eval_number("B3").unwrap(), 15.0);
     }
 
     #[test]

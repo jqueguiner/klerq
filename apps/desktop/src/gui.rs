@@ -5,6 +5,7 @@
 //! Run with: `cargo run --bin klerq-gui`
 
 use eframe::egui;
+use klerq_ai::Provider;
 use klerq_calc::FUNCTION_NAMES;
 use klerq_desktop::Workspace;
 use klerq_writer::Align;
@@ -30,6 +31,7 @@ enum Tab {
     Calc,
     Slides,
     Plugins,
+    Ai,
 }
 
 const COLS: usize = 8; // A..H
@@ -60,6 +62,11 @@ struct KlerqApp {
     plugin_src: String,
     plugin_input: String,
     plugin_out: String,
+    // AI
+    ai_prompt: String,
+    ai_answer: String,
+    ai_status: String,
+    csv_url: String,
     // File I/O feedback
     file_status: String,
 }
@@ -81,6 +88,8 @@ impl KlerqApp {
         ws.add_slide("Klerq");
         ws.add_text_box(0, "One suite. Every platform.");
         ws.add_slide("Roadmap");
+        // Restore saved AI provider config, if any.
+        ws.load_ai(std::path::Path::new("."));
 
         let app = Self {
             ws,
@@ -97,6 +106,10 @@ impl KlerqApp {
             plugin_src: SAMPLE_PLUGIN.to_string(),
             plugin_input: "make me loud".to_string(),
             plugin_out: String::new(),
+            ai_prompt: "sum of A1 to A10".to_string(),
+            ai_answer: String::new(),
+            ai_status: String::new(),
+            csv_url: String::new(),
             file_status: String::new(),
         };
         apply_theme(&cc.egui_ctx, app.dark);
@@ -149,6 +162,7 @@ impl eframe::App for KlerqApp {
                 Tab::Calc => self.calc_view(ui),
                 Tab::Slides => self.slides_view(ui),
                 Tab::Plugins => self.plugins_view(ui),
+                Tab::Ai => self.ai_view(ui),
             });
         });
     }
@@ -234,6 +248,7 @@ impl KlerqApp {
                 (Tab::Calc, "🔢", self.ws.t("app-calc")),
                 (Tab::Slides, "🖼", self.ws.t("app-slides")),
                 (Tab::Plugins, "🧩", "Plugins".to_string()),
+                (Tab::Ai, "🤖", "AI".to_string()),
             ];
             for (tab, icon, label) in items {
                 let selected = self.tab == tab;
@@ -596,5 +611,148 @@ impl KlerqApp {
                 ui.set_width(ui.available_width());
                 ui.label(egui::RichText::new(&self.plugin_out).monospace());
             });
+    }
+
+    // ---- AI ----
+    fn ai_view(&mut self, ui: &mut egui::Ui) {
+        ui.heading("🤖 AI assistant");
+        ui.label(
+            egui::RichText::new("Configure a provider, then ask for a formula in plain language.")
+                .small()
+                .weak(),
+        );
+        ui.add_space(8.0);
+
+        // ----- Provider settings -----
+        egui::CollapsingHeader::new("Provider settings")
+            .default_open(!self.ws.ai.has_key())
+            .show(ui, |ui| {
+                egui::Grid::new("ai-settings")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label("Provider");
+                        egui::ComboBox::from_id_source("ai-provider")
+                            .selected_text(self.ws.ai.provider.label())
+                            .show_ui(ui, |ui| {
+                                for p in Provider::all() {
+                                    if ui
+                                        .selectable_label(self.ws.ai.provider == p, p.label())
+                                        .clicked()
+                                    {
+                                        self.ws.ai.provider = p;
+                                        self.ws.ai.model = p.default_model().to_string();
+                                    }
+                                }
+                            });
+                        ui.end_row();
+
+                        ui.label("Model");
+                        ui.text_edit_singleline(&mut self.ws.ai.model);
+                        ui.end_row();
+
+                        ui.label("API key");
+                        ui.add(egui::TextEdit::singleline(&mut self.ws.ai.api_key).password(true));
+                        ui.end_row();
+
+                        ui.label("Custom base URL");
+                        let mut base = self.ws.ai.base_url.clone().unwrap_or_default();
+                        let hint = self.ws.ai.provider.default_base();
+                        if ui
+                            .add(egui::TextEdit::singleline(&mut base).hint_text(hint))
+                            .changed()
+                        {
+                            self.ws.ai.base_url = if base.trim().is_empty() {
+                                None
+                            } else {
+                                Some(base)
+                            };
+                        }
+                        ui.end_row();
+                    });
+                ui.horizontal(|ui| {
+                    if ui.button("💾 Save config").clicked() {
+                        self.ai_status = match self.ws.save_ai(std::path::Path::new(".")) {
+                            Ok(()) => "Saved AI config to ./klerq-ai.json".into(),
+                            Err(e) => format!("Save failed: {e}"),
+                        };
+                    }
+                    ui.label(
+                        egui::RichText::new("Key stored locally in plain JSON — keep it private.")
+                            .small()
+                            .weak(),
+                    );
+                });
+            });
+
+        ui.add_space(10.0);
+
+        // ----- Formula chat -----
+        ui.label(egui::RichText::new("Ask for a formula").strong());
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.ai_prompt)
+                    .hint_text("e.g. average of B2:B20 if A2:A20 > 0")
+                    .desired_width(420.0),
+            );
+            if ui
+                .add(
+                    egui::Button::new(egui::RichText::new("✨ Suggest formula").strong())
+                        .fill(accent()),
+                )
+                .clicked()
+            {
+                match self.ws.suggest_formula(&self.ai_prompt) {
+                    Ok(formula) => {
+                        self.ai_answer = formula;
+                        self.ai_status = "Suggestion ready".into();
+                    }
+                    Err(e) => {
+                        self.ai_answer.clear();
+                        self.ai_status = format!("Error: {e}");
+                    }
+                }
+            }
+        });
+        if !self.ai_answer.is_empty() {
+            ui.add_space(6.0);
+            egui::Frame::group(ui.style())
+                .fill(ui.style().visuals.extreme_bg_color)
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(egui::RichText::new(&self.ai_answer).monospace().size(15.0));
+                });
+            let target = self.addr(self.sel_col, self.sel_row);
+            if ui.button(format!("⇤ Insert into {target}")).clicked() {
+                self.ws.set_cell(&target, &self.ai_answer);
+                self.cell_buf = self.ai_answer.clone();
+                self.tab = Tab::Calc;
+            }
+        }
+
+        ui.add_space(12.0);
+
+        // ----- Data connection: import CSV from a URL -----
+        ui.label(egui::RichText::new("Data connection — import CSV from URL").strong());
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.csv_url)
+                    .hint_text("https://…/data.csv")
+                    .desired_width(420.0),
+            );
+            if ui.button("⭳ Import").clicked() && !self.csv_url.trim().is_empty() {
+                match self.ws.import_csv_url(&self.csv_url) {
+                    Ok(rows) => {
+                        self.ai_status = format!("Imported {rows} rows into Calc");
+                        self.tab = Tab::Calc;
+                    }
+                    Err(e) => self.ai_status = format!("Import failed: {e}"),
+                }
+            }
+        });
+
+        if !self.ai_status.is_empty() {
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new(&self.ai_status).weak());
+        }
     }
 }

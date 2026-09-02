@@ -30,4 +30,5 @@ klerq-calc = { workspace = true }
 klerq-slides = { workspace = true }
 klerq-format = { workspace = true }
 klerq-ooxml = { workspace = true }
+klerq-ai = { workspace = true }
 eframe = "0.28"

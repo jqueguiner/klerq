@@ -43,7 +43,8 @@ klerq/
 │   ├── calc/     klerq-calc    spreadsheet: cells, formula parser/evaluator, recalc
 │   ├── slides/   klerq-slides  presentations: slides, shapes, ordering
 │   ├── format/   klerq-format  save/load: native .klw/.klc/.kls + text/CSV/outline
-│   └── ooxml/    klerq-ooxml   MS Office interop: .docx / .xlsx / .pptx
+│   ├── ooxml/    klerq-ooxml   MS Office interop: .docx / .xlsx / .pptx
+│   └── ai/       klerq-ai      LLM providers (OpenAI/Anthropic/Gemini/custom) + formula assistant
 ├── apps/
 │   └── desktop/  klerq-desktop shell binary composing every engine
 ├── locales/      en-US, fr-FR  Fluent translation files (add your language here)
@@ -77,6 +78,11 @@ Plugins), a localized menu bar, dark/light theme, and a live language switcher:
   and boxes.
 - **Plugins** — a JS code editor + input; run a community `transform(text)` in the
   sandbox and see the output.
+- **AI** — configure a provider (**OpenAI**, **Anthropic**, **Gemini**, or any
+  **OpenAI-compatible** endpoint via a custom base URL), store the API key
+  locally, then describe a calculation in plain language and get a Klerq formula
+  back — grounded in the real function library — to insert into the selected
+  cell. Also imports CSV from a URL ("data connection") straight into Calc.
 - **Language** — switch en-US ⇄ fr-FR from the rail; every label re-localizes and
   RTL locales flip layout.
 
