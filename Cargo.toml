@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/i18n",
+    "crates/plugin",
+    "crates/writer",
+    "crates/calc",
+    "crates/slides",
+    "apps/desktop",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jqueguiner/klerq"
+authors = ["OpenSuite contributors"]
+rust-version = "1.75"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+fluent = "0.16"
+fluent-bundle = "0.15"
+unic-langid = { version = "0.9", features = ["macros"] }
+boa_engine = "0.19"
+
+klerq-core = { path = "crates/core" }
+klerq-i18n = { path = "crates/i18n" }
+klerq-plugin = { path = "crates/plugin" }
+klerq-writer = { path = "crates/writer" }
+klerq-calc = { path = "crates/calc" }
+klerq-slides = { path = "crates/slides" }

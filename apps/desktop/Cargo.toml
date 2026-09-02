@@ -1,0 +1,26 @@
+[package]
+name = "klerq-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Klerq desktop shell — ties Writer, Calc, Slides, i18n and plugins together."
+default-run = "klerq"
+
+[[bin]]
+name = "klerq"
+path = "src/main.rs"
+
+[lib]
+name = "klerq_desktop"
+path = "src/lib.rs"
+
+[dependencies]
+klerq-core = { workspace = true }
+klerq-i18n = { workspace = true }
+klerq-plugin = { workspace = true }
+klerq-writer = { workspace = true }
+klerq-calc = { workspace = true }
+klerq-slides = { workspace = true }

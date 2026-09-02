@@ -1,0 +1,15 @@
+[package]
+name = "klerq-plugin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Sandboxed JavaScript plugin host (boa engine) with a stable plugin API."
+
+[dependencies]
+boa_engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
