@@ -329,6 +329,63 @@ fn rate_newton(nper: f64, pmt0: f64, pv0: f64, fvv: f64, typ: f64) -> Result<f64
     Ok((lo + hi) / 2.0)
 }
 
+// ---- disruptive / novel helpers ----
+
+fn is_prime(n: u64) -> bool {
+    if n < 2 {
+        return false;
+    }
+    if n < 4 {
+        return true;
+    }
+    if n % 2 == 0 {
+        return false;
+    }
+    let mut i = 3u64;
+    while i.saturating_mul(i) <= n {
+        if n % i == 0 {
+            return false;
+        }
+        i += 2;
+    }
+    true
+}
+
+fn fib(n: u64) -> f64 {
+    let (mut a, mut b) = (0.0f64, 1.0f64);
+    for _ in 0..n {
+        let t = a + b;
+        a = b;
+        b = t;
+    }
+    a
+}
+
+fn sigmoid(x: f64) -> f64 {
+    1.0 / (1.0 + (-x).exp())
+}
+
+fn softplus(x: f64) -> f64 {
+    x.max(0.0) + (1.0 + (-x.abs()).exp()).ln()
+}
+
+fn stdev_pop(a: &[f64]) -> Option<f64> {
+    if a.is_empty() {
+        return None;
+    }
+    let m = a.iter().sum::<f64>() / a.len() as f64;
+    Some((a.iter().map(|v| (v - m).powi(2)).sum::<f64>() / a.len() as f64).sqrt())
+}
+
+/// Central moment of order `k` about the mean.
+fn moment(a: &[f64], k: i32) -> Option<f64> {
+    if a.is_empty() {
+        return None;
+    }
+    let m = a.iter().sum::<f64>() / a.len() as f64;
+    Some(a.iter().map(|v| (v - m).powi(k)).sum::<f64>() / a.len() as f64)
+}
+
 /// Dispatch `name` (already upper-cased) over flattened numeric args.
 /// Returns `None` if the name is unknown, else `Some(Ok|Err)`.
 pub fn call(name: &str, a: &[f64]) -> Option<R> {
@@ -909,6 +966,383 @@ pub fn call(name: &str, a: &[f64]) -> Option<R> {
             Ok(xs.iter().zip(ys).map(|(x, y)| x * x + y * y).sum())
         }
 
+        // ============================================================
+        //  DISRUPTIVE — primitives Excel does not ship natively.
+        // ============================================================
+
+        // --- interpolation / shaping ---
+        "CLAMP" => {
+            let (x, lo, hi) = (opt(a, 0, 0.0), opt(a, 1, 0.0), opt(a, 2, 1.0));
+            Ok(x.clamp(lo.min(hi), lo.max(hi)))
+        }
+        "SATURATE" | "CLAMP01" => Ok(opt(a, 0, 0.0).clamp(0.0, 1.0)),
+        "LERP" => {
+            let (u, v, t) = (opt(a, 0, 0.0), opt(a, 1, 0.0), opt(a, 2, 0.0));
+            Ok(u + (v - u) * t)
+        }
+        "INVLERP" => {
+            let (u, v, x) = (opt(a, 0, 0.0), opt(a, 1, 1.0), opt(a, 2, 0.0));
+            Ok(if v == u { 0.0 } else { (x - u) / (v - u) })
+        }
+        "REMAP" => {
+            let (x, a0, a1, b0, b1) = (
+                opt(a, 0, 0.0),
+                opt(a, 1, 0.0),
+                opt(a, 2, 1.0),
+                opt(a, 3, 0.0),
+                opt(a, 4, 1.0),
+            );
+            Ok(if a1 == a0 {
+                b0
+            } else {
+                b0 + (x - a0) * (b1 - b0) / (a1 - a0)
+            })
+        }
+        "SMOOTHSTEP" => {
+            let (e0, e1, x) = (opt(a, 0, 0.0), opt(a, 1, 1.0), opt(a, 2, 0.0));
+            let t = if e1 == e0 {
+                0.0
+            } else {
+                ((x - e0) / (e1 - e0)).clamp(0.0, 1.0)
+            };
+            Ok(t * t * (3.0 - 2.0 * t))
+        }
+        "STEP" => Ok((opt(a, 1, 0.0) >= opt(a, 0, 0.0)) as u8 as f64),
+        "FRACT" => Ok({
+            let x = opt(a, 0, 0.0);
+            x - x.floor()
+        }),
+        "WRAP" => {
+            let (x, lo, hi) = (opt(a, 0, 0.0), opt(a, 1, 0.0), opt(a, 2, 1.0));
+            let span = hi - lo;
+            Ok(if span == 0.0 {
+                lo
+            } else {
+                lo + (x - lo).rem_euclid(span)
+            })
+        }
+        "ROUNDSIG" => {
+            let (x, sig) = (opt(a, 0, 0.0), opt(a, 1, 3.0).max(1.0));
+            if x == 0.0 {
+                Ok(0.0)
+            } else {
+                let d = sig - 1.0 - x.abs().log10().floor();
+                let f = 10f64.powf(d);
+                Ok((x * f).round() / f)
+            }
+        }
+
+        // --- neural-net activations (built in!) ---
+        "SIGMOID" | "LOGISTIC" => return r(arg(a, 0).map(sigmoid)),
+        "RELU" => return r(arg(a, 0).map(|x| x.max(0.0))),
+        "LEAKYRELU" => {
+            let (x, al) = (opt(a, 0, 0.0), opt(a, 1, 0.01));
+            Ok(if x > 0.0 { x } else { al * x })
+        }
+        "ELU" => {
+            let (x, al) = (opt(a, 0, 0.0), opt(a, 1, 1.0));
+            Ok(if x > 0.0 { x } else { al * (x.exp() - 1.0) })
+        }
+        "GELU" => return r(arg(a, 0).map(|x| 0.5 * x * (1.0 + erf(x / 2f64.sqrt())))),
+        "SOFTPLUS" => return r(arg(a, 0).map(softplus)),
+        "SWISH" | "SILU" => return r(arg(a, 0).map(|x| x * sigmoid(x))),
+        "MISH" => return r(arg(a, 0).map(|x| x * softplus(x).tanh())),
+        "HARDSIGMOID" => return r(arg(a, 0).map(|x| (0.2 * x + 0.5).clamp(0.0, 1.0))),
+        "SOFTSIGN" => return r(arg(a, 0).map(|x| x / (1.0 + x.abs()))),
+
+        // --- distribution / information stats over a list ---
+        "RMS" => {
+            if a.is_empty() {
+                Err("empty".into())
+            } else {
+                Ok((a.iter().map(|v| v * v).sum::<f64>() / a.len() as f64).sqrt())
+            }
+        }
+        "LOGSUMEXP" => {
+            if a.is_empty() {
+                Err("empty".into())
+            } else {
+                let m = a.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                Ok(m + a.iter().map(|v| (v - m).exp()).sum::<f64>().ln())
+            }
+        }
+        "ENTROPY" => {
+            // Shannon entropy (nats); inputs normalized to a distribution.
+            let s: f64 = a.iter().filter(|v| **v > 0.0).sum();
+            if s <= 0.0 {
+                Err("need positive weights".into())
+            } else {
+                Ok(-a
+                    .iter()
+                    .filter(|v| **v > 0.0)
+                    .map(|v| {
+                        let p = v / s;
+                        p * p.ln()
+                    })
+                    .sum::<f64>())
+            }
+        }
+        "GINI" => {
+            if a.is_empty() {
+                Err("empty".into())
+            } else {
+                let v = sorted(a);
+                let n = v.len() as f64;
+                let sum: f64 = v.iter().sum();
+                if sum == 0.0 {
+                    Ok(0.0)
+                } else {
+                    let weighted: f64 = v
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| (i as f64 + 1.0) * x)
+                        .sum();
+                    Ok((2.0 * weighted) / (n * sum) - (n + 1.0) / n)
+                }
+            }
+        }
+        "CV" => {
+            return r((|| {
+                let m = mean(a)?;
+                let s = stdev_pop(a).ok_or_else(|| "empty".to_string())?;
+                Ok(s / m)
+            })());
+        }
+        "SKEW" => {
+            return r((|| {
+                let s = stdev_pop(a).ok_or("empty".to_string())?;
+                let m3 = moment(a, 3).ok_or("empty".to_string())?;
+                if s == 0.0 {
+                    Err("zero variance".into())
+                } else {
+                    Ok(m3 / s.powi(3))
+                }
+            })());
+        }
+        "KURT" => {
+            return r((|| {
+                let s = stdev_pop(a).ok_or("empty".to_string())?;
+                let m4 = moment(a, 4).ok_or("empty".to_string())?;
+                if s == 0.0 {
+                    Err("zero variance".into())
+                } else {
+                    Ok(m4 / s.powi(4) - 3.0) // excess kurtosis
+                }
+            })());
+        }
+        "IQR" => {
+            return r((|| Ok(percentile(a, 0.75)? - percentile(a, 0.25)?))());
+        }
+        "MAD" => {
+            return r((|| {
+                let med = percentile(a, 0.5)?;
+                let dev: Vec<f64> = a.iter().map(|v| (v - med).abs()).collect();
+                percentile(&dev, 0.5)
+            })());
+        }
+
+        // --- geo ---
+        "HAVERSINE" => {
+            // Great-circle distance in km between two lat/lon points.
+            let (la1, lo1, la2, lo2) = (
+                opt(a, 0, 0.0),
+                opt(a, 1, 0.0),
+                opt(a, 2, 0.0),
+                opt(a, 3, 0.0),
+            );
+            let r_km = 6371.0088;
+            let (p1, p2) = (la1.to_radians(), la2.to_radians());
+            let dp = (la2 - la1).to_radians();
+            let dl = (lo2 - lo1).to_radians();
+            let h = (dp / 2.0).sin().powi(2) + p1.cos() * p2.cos() * (dl / 2.0).sin().powi(2);
+            Ok(2.0 * r_km * h.sqrt().asin())
+        }
+
+        // --- number theory ---
+        "ISPRIME" => Ok(is_prime(opt(a, 0, 0.0).max(0.0) as u64) as u8 as f64),
+        "NEXTPRIME" => {
+            let mut n = (opt(a, 0, 0.0).max(1.0) as u64) + 1;
+            while !is_prime(n) {
+                n += 1;
+            }
+            Ok(n as f64)
+        }
+        "FIB" | "FIBONACCI" => Ok(fib(opt(a, 0, 0.0).max(0.0) as u64)),
+        "TRIANGULAR" => {
+            let n = opt(a, 0, 0.0);
+            Ok(n * (n + 1.0) / 2.0)
+        }
+        "DIGITSUM" => {
+            let mut n = opt(a, 0, 0.0).abs() as u64;
+            let mut s = 0u64;
+            while n > 0 {
+                s += n % 10;
+                n /= 10;
+            }
+            Ok(s as f64)
+        }
+        "POPCOUNT" => Ok((opt(a, 0, 0.0) as u64).count_ones() as f64),
+        "DIVISORS" => {
+            let n = opt(a, 0, 0.0).abs() as u64;
+            if n == 0 {
+                Ok(0.0)
+            } else {
+                let mut c = 0u64;
+                let mut i = 1u64;
+                while i.saturating_mul(i) <= n {
+                    if n % i == 0 {
+                        c += if i * i == n { 1 } else { 2 };
+                    }
+                    i += 1;
+                }
+                Ok(c as f64)
+            }
+        }
+
+        // --- paired vectors: ML metrics & similarity (first half a, second b) ---
+        "MSE" | "RMSE" | "MAE" | "MAPE" | "RMSLE" | "COSINE" | "EUCLID" | "MANHATTAN"
+        | "CHEBYSHEV" | "DOT" | "KLDIV" | "CROSSENTROPY" | "HAMMINGDIST" | "R2" | "BETA" => {
+            let (u, v) = match split_pairs(a) {
+                Ok(p) => p,
+                Err(e) => return r(Err(e)),
+            };
+            let n = u.len() as f64;
+            let val = match name {
+                "MSE" => u.iter().zip(v).map(|(x, y)| (x - y).powi(2)).sum::<f64>() / n,
+                "RMSE" => (u.iter().zip(v).map(|(x, y)| (x - y).powi(2)).sum::<f64>() / n).sqrt(),
+                "MAE" => u.iter().zip(v).map(|(x, y)| (x - y).abs()).sum::<f64>() / n,
+                "MAPE" => {
+                    u.iter()
+                        .zip(v)
+                        .map(|(x, y)| ((x - y) / x).abs())
+                        .sum::<f64>()
+                        / n
+                        * 100.0
+                }
+                "RMSLE" => (u
+                    .iter()
+                    .zip(v)
+                    .map(|(x, y)| ((x + 1.0).ln() - (y + 1.0).ln()).powi(2))
+                    .sum::<f64>()
+                    / n)
+                    .sqrt(),
+                "COSINE" => {
+                    let dot: f64 = u.iter().zip(v).map(|(x, y)| x * y).sum();
+                    let nu = u.iter().map(|x| x * x).sum::<f64>().sqrt();
+                    let nv = v.iter().map(|y| y * y).sum::<f64>().sqrt();
+                    if nu == 0.0 || nv == 0.0 {
+                        return r(Err("zero-length vector".into()));
+                    }
+                    dot / (nu * nv)
+                }
+                "EUCLID" => u
+                    .iter()
+                    .zip(v)
+                    .map(|(x, y)| (x - y).powi(2))
+                    .sum::<f64>()
+                    .sqrt(),
+                "MANHATTAN" => u.iter().zip(v).map(|(x, y)| (x - y).abs()).sum::<f64>(),
+                "CHEBYSHEV" => u
+                    .iter()
+                    .zip(v)
+                    .map(|(x, y)| (x - y).abs())
+                    .fold(0.0, f64::max),
+                "DOT" => u.iter().zip(v).map(|(x, y)| x * y).sum::<f64>(),
+                "KLDIV" => u
+                    .iter()
+                    .zip(v)
+                    .filter(|(p, _)| **p > 0.0)
+                    .map(|(p, q)| p * (p / q).ln())
+                    .sum::<f64>(),
+                "CROSSENTROPY" => -u
+                    .iter()
+                    .zip(v)
+                    .map(|(p, q)| p * q.max(1e-15).ln())
+                    .sum::<f64>(),
+                "HAMMINGDIST" => u.iter().zip(v).filter(|(x, y)| x != y).count() as f64,
+                "R2" => {
+                    // 1 - SS_res/SS_tot, treating first half as y_true, second as y_pred.
+                    let mean_y = u.iter().sum::<f64>() / n;
+                    let ss_tot: f64 = u.iter().map(|y| (y - mean_y).powi(2)).sum();
+                    let ss_res: f64 = u.iter().zip(v).map(|(y, p)| (y - p).powi(2)).sum();
+                    if ss_tot == 0.0 {
+                        return r(Err("constant target".into()));
+                    }
+                    1.0 - ss_res / ss_tot
+                }
+                "BETA" => match covariance(u, v, true) {
+                    Ok(cov) => match variance(v, true) {
+                        Ok(var) if var != 0.0 => cov / var,
+                        _ => return r(Err("zero market variance".into())),
+                    },
+                    Err(e) => return r(Err(e)),
+                },
+                _ => unreachable!(),
+            };
+            Ok(val)
+        }
+
+        // --- quant finance over a return/price series ---
+        "CAGR" => {
+            let (begin, end, years) = (opt(a, 0, 1.0), opt(a, 1, 1.0), opt(a, 2, 1.0));
+            Ok((end / begin).powf(1.0 / years) - 1.0)
+        }
+        "ROI" => {
+            let (gain, cost) = (opt(a, 0, 0.0), opt(a, 1, 1.0));
+            Ok((gain - cost) / cost)
+        }
+        "VOLATILITY" => return r(variance(a, true).map(f64::sqrt)),
+        "SHARPE" => {
+            // SHARPE(returns…, risk_free)
+            if a.len() < 3 {
+                return r(Err("SHARPE needs returns + risk-free".into()));
+            }
+            let rf = a[a.len() - 1];
+            let rets = &a[..a.len() - 1];
+            let m = rets.iter().sum::<f64>() / rets.len() as f64;
+            return r(stdev_pop(rets)
+                .map(|s| if s == 0.0 { 0.0 } else { (m - rf) / s })
+                .ok_or_else(|| "empty".into()));
+        }
+        "SORTINO" => {
+            if a.len() < 3 {
+                return r(Err("SORTINO needs returns + risk-free".into()));
+            }
+            let rf = a[a.len() - 1];
+            let rets = &a[..a.len() - 1];
+            let m = rets.iter().sum::<f64>() / rets.len() as f64;
+            let downside: Vec<f64> = rets.iter().map(|x| (x - rf).min(0.0)).collect();
+            let dd = (downside.iter().map(|x| x * x).sum::<f64>() / downside.len() as f64).sqrt();
+            Ok(if dd == 0.0 { 0.0 } else { (m - rf) / dd })
+        }
+        "MAXDRAWDOWN" => {
+            if a.is_empty() {
+                return r(Err("empty".into()));
+            }
+            let mut peak = a[0];
+            let mut mdd = 0.0f64;
+            for &x in a {
+                peak = peak.max(x);
+                if peak > 0.0 {
+                    mdd = mdd.max((peak - x) / peak);
+                }
+            }
+            Ok(mdd)
+        }
+        "EWMA" => {
+            // EWMA(series…, alpha)
+            if a.len() < 2 {
+                return r(Err("EWMA needs a series + alpha".into()));
+            }
+            let alpha = a[a.len() - 1].clamp(0.0, 1.0);
+            let series = &a[..a.len() - 1];
+            let mut acc = series[0];
+            for &x in &series[1..] {
+                acc = alpha * x + (1.0 - alpha) * acc;
+            }
+            Ok(acc)
+        }
+
         // ----- aliases (spreadsheet-compatible names) -----
         "COUNTA" => Ok(a.len() as f64),
         "MAXA" => a
@@ -1090,4 +1524,74 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "STDEVA",
     "VARA",
     "LOG1P",
+    // ===== DISRUPTIVE — not in Excel =====
+    // interpolation / shaping
+    "CLAMP",
+    "SATURATE",
+    "CLAMP01",
+    "LERP",
+    "INVLERP",
+    "REMAP",
+    "SMOOTHSTEP",
+    "STEP",
+    "FRACT",
+    "WRAP",
+    "ROUNDSIG",
+    // neural-net activations
+    "SIGMOID",
+    "LOGISTIC",
+    "RELU",
+    "LEAKYRELU",
+    "ELU",
+    "GELU",
+    "SOFTPLUS",
+    "SWISH",
+    "SILU",
+    "MISH",
+    "HARDSIGMOID",
+    "SOFTSIGN",
+    // information / distribution stats
+    "RMS",
+    "LOGSUMEXP",
+    "ENTROPY",
+    "GINI",
+    "CV",
+    "SKEW",
+    "KURT",
+    "IQR",
+    "MAD",
+    // geo + number theory
+    "HAVERSINE",
+    "ISPRIME",
+    "NEXTPRIME",
+    "FIB",
+    "FIBONACCI",
+    "TRIANGULAR",
+    "DIGITSUM",
+    "POPCOUNT",
+    "DIVISORS",
+    // paired ML metrics & similarity
+    "MSE",
+    "RMSE",
+    "MAE",
+    "MAPE",
+    "RMSLE",
+    "COSINE",
+    "EUCLID",
+    "MANHATTAN",
+    "CHEBYSHEV",
+    "DOT",
+    "KLDIV",
+    "CROSSENTROPY",
+    "HAMMINGDIST",
+    "R2",
+    "BETA",
+    // quant finance
+    "CAGR",
+    "ROI",
+    "VOLATILITY",
+    "SHARPE",
+    "SORTINO",
+    "MAXDRAWDOWN",
+    "EWMA",
 ];

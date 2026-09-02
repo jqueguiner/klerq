@@ -71,9 +71,13 @@ Plugins), a localized menu bar, dark/light theme, and a live language switcher:
 
 - **Writer** — add/select paragraphs, toggle bold, undo/redo (Enter to add).
 - **Calc** — clickable A1–H20 grid, a formula bar (`=SUM(B2:B3)`), live recalc,
-  `#ERR` on bad refs/cycles. Functions: SUM/AVERAGE/MIN/MAX/COUNT/PRODUCT,
-  logic `IF`/`AND`/`OR`/`NOT` with `= <> < > <= >=` comparisons, and math
-  ABS/INT/ROUND/MOD/POWER/SQRT/CEILING/FLOOR.
+  `#ERR` on bad refs/cycles. **211 functions** (clickable palette): the full
+  standard set (math/trig/stats/financial/forecasting) **plus disruptive
+  primitives Excel doesn't ship** — neural-net activations (SIGMOID, RELU, GELU,
+  SWISH, MISH…), ML metrics & similarity (MSE, RMSE, R2, COSINE, EUCLID, KLDIV,
+  CROSSENTROPY…), quant finance (CAGR, SHARPE, SORTINO, MAXDRAWDOWN, EWMA, BETA),
+  information stats (ENTROPY, GINI, LOGSUMEXP, IQR, MAD), shaping (CLAMP, LERP,
+  REMAP, SMOOTHSTEP), geo (HAVERSINE), number theory (ISPRIME, FIB, POPCOUNT).
 - **Slides** — slide list, a slide canvas that renders text-box shapes, add slides
   and boxes.
 - **Plugins** — a JS code editor + input; run a community `transform(text)` in the

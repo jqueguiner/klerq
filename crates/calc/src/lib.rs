@@ -535,7 +535,7 @@ mod tests {
     fn function_registry_is_large_and_all_recognized() {
         // Every advertised name must dispatch (never "unknown function").
         assert!(
-            FUNCTION_NAMES.len() >= 130,
+            FUNCTION_NAMES.len() >= 200,
             "only {} functions",
             FUNCTION_NAMES.len()
         );
@@ -611,6 +611,46 @@ mod tests {
         assert!((s.eval_number("A2").unwrap() - 1.0).abs() < 1e-9);
         assert!((s.eval_number("A3").unwrap() - 1.0).abs() < 1e-9);
         assert!((s.eval_number("A4").unwrap() - 21.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn disruptive_functions_not_in_excel() {
+        let mut s = Sheet::new();
+        // ML activations
+        s.set("A1", "=RELU(-3)");
+        s.set("A2", "=SIGMOID(0)");
+        // shaping
+        s.set("A3", "=CLAMP(15, 0, 10)");
+        s.set("A4", "=LERP(0, 10, 0.5)");
+        s.set("A5", "=REMAP(5, 0, 10, 0, 100)");
+        // info stats
+        s.set("A6", "=ENTROPY(1, 1, 1, 1)"); // uniform 4 → ln 4
+                                             // number theory
+        s.set("A7", "=ISPRIME(97)");
+        s.set("A8", "=FIB(10)");
+        s.set("A9", "=POPCOUNT(7)");
+        // geo: London → Paris ≈ 344 km
+        s.set("A10", "=HAVERSINE(51.5074, -0.1278, 48.8566, 2.3522)");
+        // paired ML metrics: MSE of [1,2] vs [1,3] = (0+1)/2 = 0.5
+        s.set("A11", "=MSE(1, 2, 1, 3)");
+        // cosine of identical vectors = 1
+        s.set("A12", "=COSINE(1, 2, 1, 2)");
+        // quant: CAGR 100→200 over 2y ≈ 0.4142
+        s.set("A13", "=CAGR(100, 200, 2)");
+
+        assert_eq!(s.eval_number("A1").unwrap(), 0.0);
+        assert_eq!(s.eval_number("A2").unwrap(), 0.5);
+        assert_eq!(s.eval_number("A3").unwrap(), 10.0);
+        assert_eq!(s.eval_number("A4").unwrap(), 5.0);
+        assert_eq!(s.eval_number("A5").unwrap(), 50.0);
+        assert!((s.eval_number("A6").unwrap() - 4f64.ln()).abs() < 1e-9);
+        assert_eq!(s.eval_number("A7").unwrap(), 1.0);
+        assert_eq!(s.eval_number("A8").unwrap(), 55.0);
+        assert_eq!(s.eval_number("A9").unwrap(), 3.0);
+        assert!((s.eval_number("A10").unwrap() - 344.0).abs() < 5.0);
+        assert_eq!(s.eval_number("A11").unwrap(), 0.5);
+        assert!((s.eval_number("A12").unwrap() - 1.0).abs() < 1e-9);
+        assert!((s.eval_number("A13").unwrap() - 0.414213).abs() < 1e-4);
     }
 
     #[test]
