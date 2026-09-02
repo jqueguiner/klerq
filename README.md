@@ -54,9 +54,30 @@ klerq/
 # build + run every test in the workspace
 cargo test
 
-# run the text-mode demo (exercises Writer, Calc, Slides, i18n and a JS plugin)
+# launch the graphical desktop app (egui)
+cargo run --bin klerq-gui
+
+# or run the text-mode demo (exercises Writer, Calc, Slides, i18n and a JS plugin)
 cargo run --bin klerq
 ```
+
+## The desktop app (`klerq-gui`)
+
+A native `egui`/`eframe` window with a left app-rail (Writer · Calc · Slides ·
+Plugins), a localized menu bar, dark/light theme, and a live language switcher:
+
+- **Writer** — add/select paragraphs, toggle bold, undo/redo (Enter to add).
+- **Calc** — clickable A1–H20 grid, a formula bar (`=SUM(B2:B3)`), live recalc,
+  `#ERR` on bad refs/cycles.
+- **Slides** — slide list, a slide canvas that renders text-box shapes, add slides
+  and boxes.
+- **Plugins** — a JS code editor + input; run a community `transform(text)` in the
+  sandbox and see the output.
+- **Language** — switch en-US ⇄ fr-FR from the rail; every label re-localizes and
+  RTL locales flip layout.
+
+The entire view layer sits on the unit-tested `Workspace` API — logic is tested,
+the GUI is thin.
 
 Expected demo output:
 

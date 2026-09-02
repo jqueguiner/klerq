@@ -57,12 +57,12 @@ klerq/
 - **Phase 4 — writer** ✅ paragraphs/runs/styles + edit commands. (4 tests)
 - **Phase 5 — calc** ✅ cells, formula parse+eval, dependency recalc, cycles. (16 tests)
 - **Phase 6 — slides** ✅ slides/shapes model + reorder. (5 tests)
-- **Phase 6.5 — desktop shell** ✅ `Workspace` composes all engines; text demo. (4 tests)
-- **Phase 7 — egui front-end** ⏳ real windowed UI, plugin loading, locale switch.
+- **Phase 6.5 — desktop shell** ✅ `Workspace` composes all engines; text demo. (11 tests)
+- **Phase 7 — egui front-end** ✅ windowed `klerq-gui`: app-rail, Writer/Calc/Slides/Plugins views, formula bar + live grid, slide canvas, JS plugin runner, dark/light, live locale switch + RTL.
 - **Phase 8 — file formats** ⏳ native save/load; MS Office (OOXML) interop later.
 
-**Current status:** 49 tests green; `cargo test`, `cargo clippy -D warnings`,
-`cargo fmt --check` all pass.
+**Current status:** 56 tests green; `cargo test`, `cargo clippy -D warnings`,
+`cargo fmt --check` all pass. GUI builds on all desktop targets.
 
 ## Definition of done (per crate)
 

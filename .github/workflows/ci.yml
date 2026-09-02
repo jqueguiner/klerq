@@ -49,17 +49,28 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+      - name: install GUI build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb1-dev \
+            libx11-dev libgl1-mesa-dev
       - name: test
         run: cargo test --workspace --target ${{ matrix.target }}
 
-  # ARM Linux (aarch64) via cross-compilation + qemu-backed test runner.
+  # ARM Linux (aarch64): prove the engine crates are arch-portable via
+  # cross-compilation + qemu. The GUI bin is excluded here (a windowed app on
+  # headless ARM needs a display stack); it is covered by the desktop matrix.
   cross-arm:
-    name: test linux-aarch64 (cross)
+    name: test linux-aarch64 engines (cross)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: install cross
         run: cargo install cross --locked
-      - name: test on aarch64
-        run: cross test --workspace --target aarch64-unknown-linux-gnu
+      - name: test engines on aarch64
+        run: >
+          cross test --target aarch64-unknown-linux-gnu
+          -p klerq-core -p klerq-i18n -p klerq-plugin
+          -p klerq-writer -p klerq-calc -p klerq-slides

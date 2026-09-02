@@ -8,8 +8,17 @@ use klerq_calc::Sheet;
 use klerq_core::CommandStack;
 use klerq_i18n::Localizer;
 use klerq_plugin::{PluginHost, PluginManifest};
-use klerq_slides::{AddSlide, Presentation};
-use klerq_writer::{InsertParagraph, TextDocument};
+use klerq_slides::{AddShape, AddSlide, Presentation, Shape};
+use klerq_writer::{InsertParagraph, TextDocument, ToggleBold};
+
+/// Format a float for display: integers without a trailing `.0`.
+pub fn fmt_num(n: f64) -> String {
+    if n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n}")
+    }
+}
 
 /// Base (fallback) locale source, embedded at build time.
 pub const EN_US_FTL: &str = include_str!("../../../locales/en-US/klerq.ftl");
@@ -58,6 +67,89 @@ impl Workspace {
     /// Undo the last Writer edit.
     pub fn undo_writer(&mut self) -> bool {
         self.writer_stack.undo(&mut self.writer).is_ok()
+    }
+
+    /// Redo the last undone Writer edit.
+    pub fn redo_writer(&mut self) -> bool {
+        self.writer_stack.redo(&mut self.writer).is_ok()
+    }
+
+    /// Toggle bold on a Writer paragraph (undoable).
+    pub fn toggle_bold(&mut self, index: usize) {
+        self.writer_stack
+            .execute(Box::new(ToggleBold::new(index)), &mut self.writer);
+    }
+
+    pub fn can_undo_writer(&self) -> bool {
+        self.writer_stack.can_undo()
+    }
+
+    pub fn can_redo_writer(&self) -> bool {
+        self.writer_stack.can_redo()
+    }
+
+    /// Set a Calc cell from raw user input (`42`, `text`, or `=SUM(A1:A2)`).
+    pub fn set_cell(&mut self, a1: &str, input: &str) {
+        self.calc.set(a1, input);
+    }
+
+    /// What a cell should show in the grid: evaluated number, text, or `#ERR`.
+    pub fn cell_display(&self, a1: &str) -> String {
+        match self.calc.raw(a1) {
+            klerq_calc::Cell::Empty => String::new(),
+            klerq_calc::Cell::Text(t) => t,
+            _ => match self.calc.eval_number(a1) {
+                Ok(n) => fmt_num(n),
+                Err(_) => "#ERR".to_string(),
+            },
+        }
+    }
+
+    /// Raw text to show when editing a cell (formula prefixed with `=`).
+    pub fn cell_input(&self, a1: &str) -> String {
+        match self.calc.raw(a1) {
+            klerq_calc::Cell::Empty => String::new(),
+            klerq_calc::Cell::Text(t) => t,
+            klerq_calc::Cell::Number(n) => fmt_num(n),
+            klerq_calc::Cell::Formula(f) => format!("={f}"),
+        }
+    }
+
+    /// Add a text box to slide `index` (undoable).
+    pub fn add_text_box(&mut self, index: usize, text: &str) {
+        self.slides_stack.execute(
+            Box::new(AddShape::new(index, Shape::text_box(text))),
+            &mut self.slides,
+        );
+    }
+
+    /// Run a JS plugin's `transform(input)` once, returning its output or error.
+    pub fn run_plugin(&self, source: &str, input: &str) -> Result<String, String> {
+        let manifest =
+            PluginManifest::from_json(r#"{"name":"inline","version":"0.0.0","permissions":[]}"#)
+                .map_err(|e| e.to_string())?;
+        let mut host = PluginHost::load(manifest, source).map_err(|e| e.to_string())?;
+        host.call_transform(input).map_err(|e| e.to_string())
+    }
+
+    /// Locales available to switch between.
+    pub fn locales(&self) -> Vec<String> {
+        self.locale.available_locales()
+    }
+
+    /// Switch UI language.
+    pub fn set_locale(&mut self, locale: &str) -> bool {
+        self.locale.set_locale(locale).is_ok()
+    }
+
+    /// Is the current UI language right-to-left?
+    pub fn is_rtl(&self) -> bool {
+        self.locale.is_rtl()
+    }
+
+    /// Translate a UI key in the current language.
+    pub fn t(&self, key: &str) -> String {
+        self.locale.t(key)
     }
 
     /// One-line localized status summarizing the session.
@@ -154,6 +246,74 @@ mod tests {
         assert_eq!(ws.status(), "3 words");
         ws.locale.set_locale("fr-FR").unwrap();
         assert_eq!(ws.status(), "3 mots");
+    }
+
+    #[test]
+    fn cell_display_and_input_roundtrip() {
+        let mut ws = Workspace::new();
+        ws.set_cell("A1", "10");
+        ws.set_cell("A2", "20");
+        ws.set_cell("A3", "=SUM(A1:A2)");
+        ws.set_cell("B1", "hello");
+        assert_eq!(ws.cell_display("A3"), "30");
+        assert_eq!(ws.cell_input("A3"), "=SUM(A1:A2)");
+        assert_eq!(ws.cell_display("B1"), "hello");
+        assert_eq!(ws.cell_display("Z9"), "");
+    }
+
+    #[test]
+    fn cell_display_reports_errors() {
+        let mut ws = Workspace::new();
+        ws.set_cell("A1", "=A1"); // self cycle
+        assert_eq!(ws.cell_display("A1"), "#ERR");
+    }
+
+    #[test]
+    fn redo_and_bold_through_workspace() {
+        let mut ws = Workspace::new();
+        ws.write_paragraph("hi there");
+        ws.toggle_bold(0);
+        assert!(ws.writer.paragraphs[0].runs[0].style.bold);
+        assert!(ws.undo_writer());
+        assert!(!ws.writer.paragraphs[0].runs[0].style.bold);
+        assert!(ws.redo_writer());
+        assert!(ws.writer.paragraphs[0].runs[0].style.bold);
+    }
+
+    #[test]
+    fn add_text_box_to_slide() {
+        let mut ws = Workspace::new();
+        ws.add_slide("S1");
+        ws.add_text_box(0, "box text");
+        assert_eq!(ws.slides.slides[0].shapes[0].text, "box text");
+    }
+
+    #[test]
+    fn run_plugin_through_workspace() {
+        let ws = Workspace::new();
+        let out = ws
+            .run_plugin(
+                "function transform(s){return s.split('').reverse().join('');}",
+                "abc",
+            )
+            .unwrap();
+        assert_eq!(out, "cba");
+    }
+
+    #[test]
+    fn locale_helpers() {
+        let mut ws = Workspace::new();
+        assert!(ws.locales().contains(&"fr-FR".to_string()));
+        assert!(ws.set_locale("fr-FR"));
+        assert_eq!(ws.t("action-save"), "Enregistrer");
+        assert!(!ws.is_rtl());
+    }
+
+    #[test]
+    fn fmt_num_trims_integers() {
+        assert_eq!(fmt_num(30.0), "30");
+        assert_eq!(fmt_num(2.5), "2.5");
+        assert_eq!(fmt_num(-3.0), "-3");
     }
 
     #[test]

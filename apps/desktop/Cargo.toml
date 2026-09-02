@@ -13,6 +13,10 @@ default-run = "klerq"
 name = "klerq"
 path = "src/main.rs"
 
+[[bin]]
+name = "klerq-gui"
+path = "src/gui.rs"
+
 [lib]
 name = "klerq_desktop"
 path = "src/lib.rs"
@@ -24,3 +28,4 @@ klerq-plugin = { workspace = true }
 klerq-writer = { workspace = true }
 klerq-calc = { workspace = true }
 klerq-slides = { workspace = true }
+eframe = "0.28"
