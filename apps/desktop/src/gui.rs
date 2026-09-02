@@ -6,6 +6,7 @@
 
 use eframe::egui;
 use klerq_desktop::Workspace;
+use klerq_writer::Align;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -325,8 +326,25 @@ impl KlerqApp {
                     self.ws.redo_writer();
                 }
             });
-            if ui.button("𝗕 Bold").clicked() && self.sel_para < self.ws.writer.paragraphs.len() {
+            let has_sel = self.sel_para < self.ws.writer.paragraphs.len();
+            if ui.button("𝗕 Bold").clicked() && has_sel {
                 self.ws.toggle_bold(self.sel_para);
+            }
+            if ui.button("𝘐 Italic").clicked() && has_sel {
+                self.ws.toggle_italic(self.sel_para);
+            }
+            if ui.button("U̲ Under").clicked() && has_sel {
+                self.ws.toggle_underline(self.sel_para);
+            }
+            ui.separator();
+            if ui.button("⯇").on_hover_text("Align left").clicked() && has_sel {
+                self.ws.set_align(self.sel_para, Align::Left);
+            }
+            if ui.button("≡").on_hover_text("Align center").clicked() && has_sel {
+                self.ws.set_align(self.sel_para, Align::Center);
+            }
+            if ui.button("⯈").on_hover_text("Align right").clicked() && has_sel {
+                self.ws.set_align(self.sel_para, Align::Right);
             }
         });
         ui.add_space(8.0);
@@ -334,7 +352,12 @@ impl KlerqApp {
             let count = self.ws.writer.paragraphs.len();
             for i in 0..count {
                 let para = &self.ws.writer.paragraphs[i];
-                let bold = para.runs.first().map(|r| r.style.bold).unwrap_or(false);
+                let style = para
+                    .runs
+                    .first()
+                    .map(|r| r.style.clone())
+                    .unwrap_or_default();
+                let align = para.align;
                 let selected = i == self.sel_para;
                 egui::Frame::group(ui.style())
                     .fill(if selected {
@@ -345,13 +368,27 @@ impl KlerqApp {
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         let mut text = egui::RichText::new(para.text()).size(15.0);
-                        if bold {
+                        if style.bold {
                             text = text.strong();
                         }
-                        if ui
-                            .add(egui::Label::new(text).sense(egui::Sense::click()))
-                            .clicked()
-                        {
+                        if style.italic {
+                            text = text.italics();
+                        }
+                        if style.underline {
+                            text = text.underline();
+                        }
+                        let cross = match align {
+                            Align::Left | Align::Justify => egui::Align::LEFT,
+                            Align::Center => egui::Align::Center,
+                            Align::Right => egui::Align::RIGHT,
+                        };
+                        let clicked = ui
+                            .with_layout(egui::Layout::top_down(cross), |ui| {
+                                ui.add(egui::Label::new(text).sense(egui::Sense::click()))
+                                    .clicked()
+                            })
+                            .inner;
+                        if clicked {
                             self.sel_para = i;
                         }
                     });

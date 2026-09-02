@@ -156,6 +156,112 @@ impl Command<TextDocument> for ToggleBold {
     }
 }
 
+/// Toggle italic on every run of paragraph `index`.
+pub struct ToggleItalic {
+    index: usize,
+    prev: Vec<bool>,
+}
+
+impl ToggleItalic {
+    pub fn new(index: usize) -> Self {
+        Self {
+            index,
+            prev: Vec::new(),
+        }
+    }
+}
+
+impl Command<TextDocument> for ToggleItalic {
+    fn label(&self) -> &str {
+        "writer.toggle_italic"
+    }
+    fn apply(&mut self, doc: &mut TextDocument) {
+        if let Some(p) = doc.paragraphs.get_mut(self.index) {
+            self.prev = p.runs.iter().map(|r| r.style.italic).collect();
+            for r in &mut p.runs {
+                r.style.italic = !r.style.italic;
+            }
+        }
+    }
+    fn undo(&mut self, doc: &mut TextDocument) {
+        if let Some(p) = doc.paragraphs.get_mut(self.index) {
+            for (r, was) in p.runs.iter_mut().zip(self.prev.iter()) {
+                r.style.italic = *was;
+            }
+        }
+    }
+}
+
+/// Toggle underline on every run of paragraph `index`.
+pub struct ToggleUnderline {
+    index: usize,
+    prev: Vec<bool>,
+}
+
+impl ToggleUnderline {
+    pub fn new(index: usize) -> Self {
+        Self {
+            index,
+            prev: Vec::new(),
+        }
+    }
+}
+
+impl Command<TextDocument> for ToggleUnderline {
+    fn label(&self) -> &str {
+        "writer.toggle_underline"
+    }
+    fn apply(&mut self, doc: &mut TextDocument) {
+        if let Some(p) = doc.paragraphs.get_mut(self.index) {
+            self.prev = p.runs.iter().map(|r| r.style.underline).collect();
+            for r in &mut p.runs {
+                r.style.underline = !r.style.underline;
+            }
+        }
+    }
+    fn undo(&mut self, doc: &mut TextDocument) {
+        if let Some(p) = doc.paragraphs.get_mut(self.index) {
+            for (r, was) in p.runs.iter_mut().zip(self.prev.iter()) {
+                r.style.underline = *was;
+            }
+        }
+    }
+}
+
+/// Set the alignment of paragraph `index`, remembering the previous value.
+pub struct SetAlign {
+    index: usize,
+    align: Align,
+    prev: Align,
+}
+
+impl SetAlign {
+    pub fn new(index: usize, align: Align) -> Self {
+        Self {
+            index,
+            align,
+            prev: Align::default(),
+        }
+    }
+}
+
+impl Command<TextDocument> for SetAlign {
+    fn label(&self) -> &str {
+        "writer.set_align"
+    }
+    fn apply(&mut self, doc: &mut TextDocument) {
+        if let Some(p) = doc.paragraphs.get_mut(self.index) {
+            self.prev = p.align;
+            p.align = self.align;
+        }
+    }
+    fn undo(&mut self, doc: &mut TextDocument) {
+        if let Some(p) = doc.paragraphs.get_mut(self.index) {
+            p.align = self.prev;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +302,42 @@ mod tests {
 
         stack.undo(&mut doc).unwrap();
         assert!(!doc.paragraphs[0].runs[0].style.bold);
+    }
+
+    #[test]
+    fn italic_and_underline_toggle_round_trip() {
+        let mut doc = TextDocument::new();
+        let mut stack = CommandStack::new();
+        stack.execute(Box::new(InsertParagraph::new("style me")), &mut doc);
+
+        stack.execute(Box::new(ToggleItalic::new(0)), &mut doc);
+        stack.execute(Box::new(ToggleUnderline::new(0)), &mut doc);
+        assert!(doc.paragraphs[0].runs[0].style.italic);
+        assert!(doc.paragraphs[0].runs[0].style.underline);
+
+        stack.undo(&mut doc).unwrap(); // undo underline
+        assert!(!doc.paragraphs[0].runs[0].style.underline);
+        assert!(doc.paragraphs[0].runs[0].style.italic);
+        stack.undo(&mut doc).unwrap(); // undo italic
+        assert!(!doc.paragraphs[0].runs[0].style.italic);
+    }
+
+    #[test]
+    fn set_align_is_undoable() {
+        let mut doc = TextDocument::new();
+        let mut stack = CommandStack::new();
+        stack.execute(Box::new(InsertParagraph::new("centered")), &mut doc);
+        assert_eq!(doc.paragraphs[0].align, Align::Left);
+
+        stack.execute(Box::new(SetAlign::new(0, Align::Center)), &mut doc);
+        assert_eq!(doc.paragraphs[0].align, Align::Center);
+        stack.execute(Box::new(SetAlign::new(0, Align::Right)), &mut doc);
+        assert_eq!(doc.paragraphs[0].align, Align::Right);
+
+        stack.undo(&mut doc).unwrap();
+        assert_eq!(doc.paragraphs[0].align, Align::Center);
+        stack.undo(&mut doc).unwrap();
+        assert_eq!(doc.paragraphs[0].align, Align::Left);
     }
 
     #[test]

@@ -9,7 +9,9 @@ use klerq_core::CommandStack;
 use klerq_i18n::Localizer;
 use klerq_plugin::{PluginHost, PluginManifest};
 use klerq_slides::{AddShape, AddSlide, Presentation, Shape};
-use klerq_writer::{InsertParagraph, TextDocument, ToggleBold};
+use klerq_writer::{
+    Align, InsertParagraph, SetAlign, TextDocument, ToggleBold, ToggleItalic, ToggleUnderline,
+};
 
 /// Format a float for display: integers without a trailing `.0`.
 pub fn fmt_num(n: f64) -> String {
@@ -115,6 +117,24 @@ impl Workspace {
     pub fn toggle_bold(&mut self, index: usize) {
         self.writer_stack
             .execute(Box::new(ToggleBold::new(index)), &mut self.writer);
+    }
+
+    /// Toggle italic on a Writer paragraph (undoable).
+    pub fn toggle_italic(&mut self, index: usize) {
+        self.writer_stack
+            .execute(Box::new(ToggleItalic::new(index)), &mut self.writer);
+    }
+
+    /// Toggle underline on a Writer paragraph (undoable).
+    pub fn toggle_underline(&mut self, index: usize) {
+        self.writer_stack
+            .execute(Box::new(ToggleUnderline::new(index)), &mut self.writer);
+    }
+
+    /// Set alignment of a Writer paragraph (undoable).
+    pub fn set_align(&mut self, index: usize, align: Align) {
+        self.writer_stack
+            .execute(Box::new(SetAlign::new(index, align)), &mut self.writer);
     }
 
     pub fn can_undo_writer(&self) -> bool {
@@ -403,6 +423,21 @@ mod tests {
         assert!(!ws.writer.paragraphs[0].runs[0].style.bold);
         assert!(ws.redo_writer());
         assert!(ws.writer.paragraphs[0].runs[0].style.bold);
+    }
+
+    #[test]
+    fn writer_formatting_through_workspace() {
+        let mut ws = Workspace::new();
+        ws.write_paragraph("format me");
+        ws.toggle_italic(0);
+        ws.toggle_underline(0);
+        ws.set_align(0, Align::Center);
+        let run = &ws.writer.paragraphs[0].runs[0];
+        assert!(run.style.italic);
+        assert!(run.style.underline);
+        assert_eq!(ws.writer.paragraphs[0].align, Align::Center);
+        assert!(ws.undo_writer()); // undo align
+        assert_eq!(ws.writer.paragraphs[0].align, Align::Left);
     }
 
     #[test]
