@@ -127,6 +127,14 @@ versioned JSON envelope that round-trips losslessly (formulas preserved). The
 `klerq-format` crate also does interop: Writer ⇄ plain text, Calc ⇄ CSV
 (evaluated values out, `=formulas` in), Slides ⇄ Markdown-ish outline.
 
+**Microsoft 365 / Excel Online.** Via the **Microsoft Graph API** (more open than
+Google): resolve a workbook **share link** to a driveItem, then **read and write**
+worksheet ranges (`PATCH` keeps formulas), open workbook **sessions**, and
+subscribe to **change-notification webhooks** for near-real-time push. Paste the
+link + a Graph OAuth token in the AI tab, pick a worksheet/range, then Open or
+Push. (Joining Microsoft's live Fluid co-auth session isn't a public path, but
+Graph gives genuine bidirectional sync.)
+
 **Google Sheets.** Paste a sheet link in the AI tab to **open a public sheet**
 (CSV export, zero auth) into Calc, with **auto-poll** for near-real-time reads.
 Write the grid back through the official Sheets API v4 with an OAuth token.

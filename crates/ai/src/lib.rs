@@ -15,6 +15,7 @@
 //! Built TDD-first — see the `tests` module.
 
 pub mod google;
+pub mod microsoft;
 
 use std::fmt;
 

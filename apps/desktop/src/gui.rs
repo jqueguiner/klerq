@@ -78,6 +78,12 @@ struct KlerqApp {
     gsheet_auto: bool,
     gsheet_interval: f32,
     gsheet_last: f64,
+    // Microsoft 365 / Excel Online
+    ms_url: String,
+    ms_token: String,
+    ms_ws: String,
+    ms_addr: String,
+    ms_status: String,
     // File I/O feedback
     file_status: String,
 }
@@ -130,6 +136,11 @@ impl KlerqApp {
             gsheet_auto: false,
             gsheet_interval: 10.0,
             gsheet_last: 0.0,
+            ms_url: String::new(),
+            ms_token: String::new(),
+            ms_ws: "Sheet1".to_string(),
+            ms_addr: "A1:H20".to_string(),
+            ms_status: String::new(),
             file_status: String::new(),
         };
         apply_theme(&cc.egui_ctx, app.dark);
@@ -893,6 +904,67 @@ impl KlerqApp {
         });
         if !self.gsheet_status.is_empty() {
             ui.label(egui::RichText::new(&self.gsheet_status).weak());
+        }
+
+        ui.add_space(12.0);
+        ui.separator();
+        // ----- Microsoft 365 / Excel Online (Graph API) -----
+        ui.label(egui::RichText::new("Ⓜ Microsoft 365 — Excel Online").strong());
+        ui.label(
+            egui::RichText::new(
+                "Open/edit an Excel workbook on OneDrive/SharePoint via Microsoft Graph \
+                 (official read + write; formulas kept). Needs an OAuth access token.",
+            )
+            .small()
+            .weak(),
+        );
+        ui.add(
+            egui::TextEdit::singleline(&mut self.ms_url)
+                .hint_text("workbook share link (…sharepoint.com/… or 1drv.ms/…)")
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            ui.label("Worksheet");
+            ui.add(egui::TextEdit::singleline(&mut self.ms_ws).desired_width(90.0));
+            ui.label("Range");
+            ui.add(egui::TextEdit::singleline(&mut self.ms_addr).desired_width(110.0));
+        });
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.ms_token)
+                    .password(true)
+                    .hint_text("Graph OAuth access token")
+                    .desired_width(320.0),
+            );
+            let ready = !self.ms_url.trim().is_empty() && !self.ms_token.trim().is_empty();
+            if ui.button("📂 Open").clicked() && ready {
+                self.ms_status = match self.ws.open_excel_online(
+                    &self.ms_url,
+                    &self.ms_token,
+                    &self.ms_ws,
+                    &self.ms_addr,
+                ) {
+                    Ok(n) => {
+                        self.tab = Tab::Calc;
+                        format!("Opened {n} rows from Excel Online")
+                    }
+                    Err(e) => format!("Open failed: {e}"),
+                };
+            }
+            if ui.button("⬆ Push").clicked() && ready {
+                self.ms_status = match self.ws.push_excel_online(
+                    &self.ms_url,
+                    &self.ms_token,
+                    &self.ms_ws,
+                    &self.ms_addr,
+                ) {
+                    Ok(()) => "Pushed current sheet to Excel Online".into(),
+                    Err(e) => format!("Push failed: {e}"),
+                };
+            }
+        });
+        if !self.ms_status.is_empty() {
+            ui.label(egui::RichText::new(&self.ms_status).weak());
         }
 
         ui.add_space(12.0);

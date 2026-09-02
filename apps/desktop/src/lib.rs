@@ -419,6 +419,51 @@ impl Workspace {
         klerq_ai::google::push_values(&r.id, "A1", &values, token).map_err(|e| e.to_string())
     }
 
+    /// Replace the Calc sheet with a row-major string grid (A1 top-left).
+    fn apply_grid(&mut self, grid: &[Vec<String>]) -> usize {
+        self.calc = Sheet::new();
+        for (r, row) in grid.iter().enumerate() {
+            for (c, val) in row.iter().enumerate() {
+                if !val.is_empty() {
+                    self.calc.set(&col_row_to_a1(c as u32, r as u32), val);
+                }
+            }
+        }
+        grid.len()
+    }
+
+    /// Open an Excel workbook on OneDrive/SharePoint from a share link via
+    /// Microsoft Graph and import a worksheet range into Calc. Needs an OAuth
+    /// access token (Graph `Files.ReadWrite` scope).
+    pub fn open_excel_online(
+        &mut self,
+        share_url: &str,
+        token: &str,
+        worksheet: &str,
+        address: &str,
+    ) -> Result<usize, String> {
+        let (drive, item) = klerq_ai::microsoft::resolve_shared_item(share_url, token)
+            .map_err(|e| e.to_string())?;
+        let grid = klerq_ai::microsoft::get_range_values(&drive, &item, worksheet, address, token)
+            .map_err(|e| e.to_string())?;
+        Ok(self.apply_grid(&grid))
+    }
+
+    /// Write the current Calc grid back to an Excel Online worksheet range.
+    pub fn push_excel_online(
+        &self,
+        share_url: &str,
+        token: &str,
+        worksheet: &str,
+        address: &str,
+    ) -> Result<(), String> {
+        let (drive, item) = klerq_ai::microsoft::resolve_shared_item(share_url, token)
+            .map_err(|e| e.to_string())?;
+        let values = self.sheet_to_values();
+        klerq_ai::microsoft::update_range(&drive, &item, worksheet, address, &values, token)
+            .map_err(|e| e.to_string())
+    }
+
     /// This replica's collaboration id.
     pub fn collab_site(&self) -> u64 {
         self.collab.site
@@ -808,6 +853,19 @@ mod tests {
     fn open_google_sheet_rejects_bad_link() {
         let mut ws = Workspace::new();
         assert!(ws.open_google_sheet("https://example.com/nope").is_err());
+    }
+
+    #[test]
+    fn apply_grid_fills_calc() {
+        let mut ws = Workspace::new();
+        let grid = vec![
+            vec!["Item".to_string(), "Qty".to_string()],
+            vec!["Widget".to_string(), "=1+2".to_string()],
+        ];
+        let rows = ws.apply_grid(&grid);
+        assert_eq!(rows, 2);
+        assert_eq!(ws.calc.raw("A1"), klerq_calc::Cell::Text("Item".into()));
+        assert_eq!(ws.calc.eval_number("B2").unwrap(), 3.0); // formula from grid
     }
 
     #[test]
