@@ -196,6 +196,50 @@ impl Workspace {
         loaded
     }
 
+    /// Export all three documents to MS Office files in `dir`
+    /// (`klerq.docx` / `klerq.xlsx` / `klerq.pptx`). Returns the written paths.
+    pub fn export_ooxml(&self, dir: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
+        use klerq_ooxml::{write_docx, write_pptx, write_xlsx, EXT_DOCX, EXT_PPTX, EXT_XLSX};
+        let jobs: [(&str, Vec<u8>); 3] = [
+            (EXT_DOCX, write_docx(&self.writer)),
+            (EXT_XLSX, write_xlsx(&self.calc)),
+            (EXT_PPTX, write_pptx(&self.slides)),
+        ];
+        let mut out = Vec::new();
+        for (ext, data) in jobs {
+            let path = dir.join(format!("klerq.{ext}"));
+            std::fs::write(&path, data)?;
+            out.push(path);
+        }
+        Ok(out)
+    }
+
+    /// Import whichever MS Office files exist in `dir`, replacing the matching
+    /// documents. Returns how many were imported.
+    pub fn import_ooxml(&mut self, dir: &std::path::Path) -> usize {
+        use klerq_ooxml::{read_docx, read_pptx, read_xlsx, EXT_DOCX, EXT_PPTX, EXT_XLSX};
+        let mut n = 0;
+        if let Ok(b) = std::fs::read(dir.join(format!("klerq.{EXT_DOCX}"))) {
+            if let Ok(d) = read_docx(&b) {
+                self.writer = d;
+                n += 1;
+            }
+        }
+        if let Ok(b) = std::fs::read(dir.join(format!("klerq.{EXT_XLSX}"))) {
+            if let Ok(d) = read_xlsx(&b) {
+                self.calc = d;
+                n += 1;
+            }
+        }
+        if let Ok(b) = std::fs::read(dir.join(format!("klerq.{EXT_PPTX}"))) {
+            if let Ok(d) = read_pptx(&b) {
+                self.slides = d;
+                n += 1;
+            }
+        }
+        n
+    }
+
     /// One-line localized status summarizing the session.
     pub fn status(&self) -> String {
         let words = self.writer.word_count().to_string();
@@ -379,6 +423,27 @@ mod tests {
         assert_eq!(ws2.writer.plain_text(), "persisted paragraph");
         assert_eq!(ws2.calc.eval_number("A2").unwrap(), 21.0);
         assert_eq!(ws2.slides.slides[0].title, "Saved deck");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ooxml_export_import_roundtrips() {
+        let dir = std::env::temp_dir().join(format!("klerq-ooxml-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut ws = Workspace::new();
+        ws.write_paragraph("office interop works");
+        ws.set_cell("A1", "5");
+        ws.set_cell("A2", "=A1*4");
+        ws.add_slide("Deck title");
+        assert_eq!(ws.export_ooxml(&dir).unwrap().len(), 3);
+
+        let mut ws2 = Workspace::new();
+        assert_eq!(ws2.import_ooxml(&dir), 3);
+        assert_eq!(ws2.writer.plain_text(), "office interop works");
+        assert_eq!(ws2.calc.eval_number("A2").unwrap(), 20.0);
+        assert_eq!(ws2.slides.slides[0].title, "Deck title");
 
         std::fs::remove_dir_all(&dir).ok();
     }

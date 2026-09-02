@@ -42,7 +42,8 @@ klerq/
 │   ├── writer/   klerq-writer  word processor: paragraphs, runs, styles
 │   ├── calc/     klerq-calc    spreadsheet: cells, formula parser/evaluator, recalc
 │   ├── slides/   klerq-slides  presentations: slides, shapes, ordering
-│   └── format/   klerq-format  save/load: native .klw/.klc/.kls + text/CSV/outline
+│   ├── format/   klerq-format  save/load: native .klw/.klc/.kls + text/CSV/outline
+│   └── ooxml/    klerq-ooxml   MS Office interop: .docx / .xlsx / .pptx
 ├── apps/
 │   └── desktop/  klerq-desktop shell binary composing every engine
 ├── locales/      en-US, fr-FR  Fluent translation files (add your language here)
@@ -112,8 +113,15 @@ Save/Open in the File menu writes the three open documents as **native** Klerq
 files — `klerq.klw` (Writer), `klerq.klc` (Calc), `klerq.kls` (Slides) — a
 versioned JSON envelope that round-trips losslessly (formulas preserved). The
 `klerq-format` crate also does interop: Writer ⇄ plain text, Calc ⇄ CSV
-(evaluated values out, `=formulas` in), Slides ⇄ Markdown-ish outline. Full MS
-Office `.docx`/`.xlsx`/`.pptx` (OOXML) is the next phase.
+(evaluated values out, `=formulas` in), Slides ⇄ Markdown-ish outline.
+
+**MS Office (OOXML).** File ▸ Export/Import MS Office reads and writes real
+`.docx` / `.xlsx` / `.pptx` — genuine OPC zip packages built with pure-Rust
+`zip` + `quick-xml` (so they work on every target, ARM included):
+- **.docx** — paragraphs and runs with bold / italic / underline.
+- **.xlsx** — inline-string, number and formula cells (`<f>` + cached value).
+- **.pptx** — slide titles and text boxes (a Klerq OOXML subset that round-trips
+  in Klerq; full PowerPoint master/layout fidelity is the next phase).
 
 ## Adding a language
 

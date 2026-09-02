@@ -1,0 +1,17 @@
+[package]
+name = "klerq-ooxml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "MS Office OOXML interop for Klerq — read/write .docx, .xlsx, .pptx."
+
+[dependencies]
+klerq-writer = { workspace = true }
+klerq-calc = { workspace = true }
+klerq-slides = { workspace = true }
+zip = { workspace = true }
+quick-xml = { workspace = true }
+thiserror = { workspace = true }

@@ -170,6 +170,19 @@ impl KlerqApp {
                         };
                         ui.close_menu();
                     }
+                    ui.separator();
+                    if ui.button("Export to MS Office…").clicked() {
+                        self.file_status = match self.ws.export_ooxml(std::path::Path::new(".")) {
+                            Ok(p) => format!("Exported {} files (klerq.docx/.xlsx/.pptx)", p.len()),
+                            Err(e) => format!("Export failed: {e}"),
+                        };
+                        ui.close_menu();
+                    }
+                    if ui.button("Import from MS Office…").clicked() {
+                        let n = self.ws.import_ooxml(std::path::Path::new("."));
+                        self.file_status = format!("Imported {n} MS Office file(s) from ./klerq.*");
+                        ui.close_menu();
+                    }
                 });
                 ui.menu_button(self.ws.t("menu-edit"), |ui| {
                     if ui.button(self.ws.t("action-undo")).clicked() {
