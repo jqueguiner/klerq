@@ -127,6 +127,14 @@ versioned JSON envelope that round-trips losslessly (formulas preserved). The
 `klerq-format` crate also does interop: Writer ⇄ plain text, Calc ⇄ CSV
 (evaluated values out, `=formulas` in), Slides ⇄ Markdown-ish outline.
 
+**Google Sheets.** Paste a sheet link in the AI tab to **open a public sheet**
+(CSV export, zero auth) into Calc, with **auto-poll** for near-real-time reads.
+Write the grid back through the official Sheets API v4 with an OAuth token.
+(Google's *live* editing runs over a private, undocumented protocol no
+third-party client can join — so this is read-now + poll + API write, not a join
+of Google's realtime session.) For true multi-user realtime, use Klerq's own
+CRDT sync below.
+
 **Real-time collaboration (Google-Docs-style).** `klerq-sync` gives documents
 CRDT-based live sync — every replica edits locally and converges with no central
 server or locking. Calc uses a last-writer-wins grid (Lamport-stamped, site

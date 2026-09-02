@@ -71,6 +71,13 @@ struct KlerqApp {
     // Collaboration
     collab_buf: String,
     collab_status: String,
+    // Google Sheets
+    gsheet_url: String,
+    gsheet_token: String,
+    gsheet_status: String,
+    gsheet_auto: bool,
+    gsheet_interval: f32,
+    gsheet_last: f64,
     // File I/O feedback
     file_status: String,
 }
@@ -117,6 +124,12 @@ impl KlerqApp {
             data_paste: String::new(),
             collab_buf: String::new(),
             collab_status: String::new(),
+            gsheet_url: String::new(),
+            gsheet_token: String::new(),
+            gsheet_status: String::new(),
+            gsheet_auto: false,
+            gsheet_interval: 10.0,
+            gsheet_last: 0.0,
             file_status: String::new(),
         };
         apply_theme(&cc.egui_ctx, app.dark);
@@ -154,6 +167,7 @@ fn apply_theme(ctx: &egui::Context, dark: bool) {
 
 impl eframe::App for KlerqApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_google_sheet(ctx);
         self.menu_bar(ctx);
         self.side_rail(ctx);
         self.status_bar(ctx);
@@ -621,6 +635,25 @@ impl KlerqApp {
             });
     }
 
+    /// Auto-refresh an open Google Sheet on an interval (near-real-time read).
+    /// Note: the fetch is blocking on the UI thread — kept simple; a background
+    /// thread is the production upgrade.
+    fn poll_google_sheet(&mut self, ctx: &egui::Context) {
+        if !self.gsheet_auto || self.gsheet_url.trim().is_empty() {
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        let due = now - self.gsheet_last >= self.gsheet_interval as f64;
+        if due {
+            self.gsheet_last = now;
+            self.gsheet_status = match self.ws.open_google_sheet(&self.gsheet_url) {
+                Ok(n) => format!("Auto-refreshed {n} rows"),
+                Err(e) => format!("Auto-refresh failed: {e}"),
+            };
+        }
+        ctx.request_repaint_after(std::time::Duration::from_secs_f32(self.gsheet_interval));
+    }
+
     // ---- AI ----
     fn ai_view(&mut self, ui: &mut egui::Ui) {
         ui.heading("🤖 AI assistant");
@@ -796,6 +829,70 @@ impl KlerqApp {
         if !self.ai_status.is_empty() {
             ui.add_space(8.0);
             ui.label(egui::RichText::new(&self.ai_status).weak());
+        }
+
+        ui.add_space(12.0);
+        ui.separator();
+        // ----- Google Sheets connector -----
+        ui.label(egui::RichText::new("📊 Google Sheets").strong());
+        ui.label(
+            egui::RichText::new(
+                "Open a public sheet from its link (read + auto-poll). Google has no open \
+                 realtime protocol, so this is near-real-time. Write-back needs an access token.",
+            )
+            .small()
+            .weak(),
+        );
+        ui.add(
+            egui::TextEdit::singleline(&mut self.gsheet_url)
+                .hint_text("https://docs.google.com/spreadsheets/d/…/edit#gid=0")
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            if ui.button("📂 Open").clicked() && !self.gsheet_url.trim().is_empty() {
+                self.gsheet_status = match self.ws.open_google_sheet(&self.gsheet_url) {
+                    Ok(n) => {
+                        self.tab = Tab::Calc;
+                        format!("Opened {n} rows from Google Sheet")
+                    }
+                    Err(e) => format!("Open failed: {e}"),
+                };
+            }
+            if ui.button("🔄 Refresh").clicked() && !self.gsheet_url.trim().is_empty() {
+                self.gsheet_status = match self.ws.open_google_sheet(&self.gsheet_url) {
+                    Ok(n) => format!("Refreshed {n} rows"),
+                    Err(e) => format!("Refresh failed: {e}"),
+                };
+            }
+            ui.checkbox(&mut self.gsheet_auto, "Auto-poll");
+            ui.add(
+                egui::DragValue::new(&mut self.gsheet_interval)
+                    .range(3.0..=300.0)
+                    .suffix(" s"),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gsheet_token)
+                    .password(true)
+                    .hint_text("OAuth access token (for write-back)")
+                    .desired_width(320.0),
+            );
+            if ui.button("⬆ Push to Sheet").clicked()
+                && !self.gsheet_url.trim().is_empty()
+                && !self.gsheet_token.trim().is_empty()
+            {
+                self.gsheet_status = match self
+                    .ws
+                    .push_google_sheet(&self.gsheet_url, &self.gsheet_token)
+                {
+                    Ok(()) => "Pushed current sheet to Google".into(),
+                    Err(e) => format!("Push failed: {e}"),
+                };
+            }
+        });
+        if !self.gsheet_status.is_empty() {
+            ui.label(egui::RichText::new(&self.gsheet_status).weak());
         }
 
         ui.add_space(12.0);

@@ -385,6 +385,40 @@ impl Workspace {
         }
     }
 
+    /// Current Calc grid as a row-major grid of raw inputs (formulas kept),
+    /// for writing back to an external sheet.
+    pub fn sheet_to_values(&self) -> Vec<Vec<String>> {
+        let (max_col, max_row) = match self.calc.extent() {
+            Some(x) => x,
+            None => return Vec::new(),
+        };
+        (0..=max_row)
+            .map(|r| {
+                (0..=max_col)
+                    .map(|c| self.cell_input(&col_row_to_a1(c, r)))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Open a Google Sheet from its share/edit link (public sheet, no auth) and
+    /// import it into Calc. Returns the row count.
+    pub fn open_google_sheet(&mut self, url: &str) -> Result<usize, String> {
+        let r = klerq_ai::google::parse_sheet_url(url)
+            .ok_or_else(|| "not a Google Sheets link".to_string())?;
+        let csv = klerq_ai::google::fetch_public_csv(&r).map_err(|e| e.to_string())?;
+        Ok(self.import_csv_text(&csv))
+    }
+
+    /// Write the current Calc grid back to a Google Sheet via the v4 API
+    /// (needs an OAuth access token with write scope).
+    pub fn push_google_sheet(&self, url: &str, token: &str) -> Result<(), String> {
+        let r = klerq_ai::google::parse_sheet_url(url)
+            .ok_or_else(|| "not a Google Sheets link".to_string())?;
+        let values = self.sheet_to_values();
+        klerq_ai::google::push_values(&r.id, "A1", &values, token).map_err(|e| e.to_string())
+    }
+
     /// This replica's collaboration id.
     pub fn collab_site(&self) -> u64 {
         self.collab.site
@@ -756,6 +790,24 @@ mod tests {
         // Bob's live sheet reflects Alice's edits and recomputes formulas.
         assert_eq!(bob.calc.eval_number("A1").unwrap(), 10.0);
         assert_eq!(bob.calc.eval_number("A2").unwrap(), 20.0);
+    }
+
+    #[test]
+    fn sheet_to_values_grid() {
+        let mut ws = Workspace::new();
+        ws.set_cell("A1", "Item");
+        ws.set_cell("B1", "Qty");
+        ws.set_cell("A2", "Widget");
+        ws.set_cell("B2", "=1+1"); // formula kept as input
+        let vals = ws.sheet_to_values();
+        assert_eq!(vals[0], vec!["Item", "Qty"]);
+        assert_eq!(vals[1], vec!["Widget", "=1+1"]);
+    }
+
+    #[test]
+    fn open_google_sheet_rejects_bad_link() {
+        let mut ws = Workspace::new();
+        assert!(ws.open_google_sheet("https://example.com/nope").is_err());
     }
 
     #[test]

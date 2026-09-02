@@ -14,6 +14,8 @@
 //!
 //! Built TDD-first — see the `tests` module.
 
+pub mod google;
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
