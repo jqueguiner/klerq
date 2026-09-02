@@ -5,16 +5,23 @@
 //! - arithmetic `+ - * /`, parentheses, unary minus
 //! - comparisons `= <> < > <= >=` (yield 1/0), usable in `IF`
 //! - cell references (`A1`) and ranges (`A1:B3`)
-//! - aggregate fns `SUM`, `PRODUCT`, `AVERAGE`, `MIN`, `MAX`, `COUNT`, `AND`, `OR`
-//! - logic/math fns `IF` (lazy), `NOT`, `ABS`, `INT`, `ROUND`, `MOD`, `POWER`,
-//!   `SQRT`, `CEILING`, `FLOOR`
+//! - a large function library ([`FUNCTION_NAMES`], dispatched in `functions.rs`):
+//!   math/trig/hyperbolic, rounding, combinatorics & special (`GAMMA`, `ERF`),
+//!   statistics (`MEDIAN`, `STDEV`, `PERCENTILE`, `MODE`, …), logic
+//!   (`IF`/`IFS`/`IFERROR` lazy, `AND`/`OR`/`XOR`/`NOT`), bitwise, financial
+//!   (`PMT`, `FV`, `PV`, `RATE`, `NPER`, `IPMT`, `NPV`, `IRR`, `MIRR`, `DDB`, …)
+//!   and forecasting/regression (`SLOPE`, `INTERCEPT`, `FORECAST`, `TREND`,
+//!   `CORREL`, `RSQ`, `GROWTH`, …).
 //!
 //! Evaluation is recursive with **cycle detection**, so `A1=B1`, `B1=A1`
 //! yields a [`CalcError::Cycle`] instead of hanging.
 //!
 //! Built TDD-first — see the `tests` module (written before the engine).
 
+mod functions;
 mod parser;
+
+pub use functions::FUNCTION_NAMES;
 
 use std::collections::{HashMap, HashSet};
 
@@ -242,8 +249,10 @@ impl Sheet {
     ) -> Result<f64, CalcError> {
         let up = name.to_ascii_uppercase();
 
-        // IF is lazy: only the taken branch is evaluated (so the untaken branch
-        // may reference erroring/cyclic cells without failing the whole formula).
+        // ----- Lazy functions (need the AST, not just evaluated values) -----
+
+        // IF: only the taken branch is evaluated, so the untaken branch may
+        // reference erroring/cyclic cells without failing the whole formula.
         if up == "IF" {
             if args.len() != 3 {
                 return Err(CalcError::Value("IF needs 3 arguments".into()));
@@ -252,92 +261,34 @@ impl Sheet {
             let branch = if cond != 0.0 { &args[1] } else { &args[2] };
             return self.eval_expr(branch, visiting);
         }
-
-        // Aggregate functions flatten ranges into a value list.
-        if matches!(
-            up.as_str(),
-            "SUM" | "PRODUCT" | "COUNT" | "AVERAGE" | "MIN" | "MAX" | "AND" | "OR"
-        ) {
-            let values = self.flatten_args(args, visiting)?;
-            return match up.as_str() {
-                "SUM" => Ok(values.iter().sum()),
-                "PRODUCT" => Ok(values.iter().product()),
-                "COUNT" => Ok(values.len() as f64),
-                "AVERAGE" => {
-                    if values.is_empty() {
-                        Err(CalcError::Value("AVERAGE of empty range".into()))
-                    } else {
-                        Ok(values.iter().sum::<f64>() / values.len() as f64)
-                    }
+        // IFS: pairs of (cond, value); return the first value whose cond is true.
+        if up == "IFS" {
+            let mut i = 0;
+            while i + 1 < args.len() {
+                if self.eval_expr(&args[i], visiting)? != 0.0 {
+                    return self.eval_expr(&args[i + 1], visiting);
                 }
-                "MIN" => values
-                    .iter()
-                    .cloned()
-                    .reduce(f64::min)
-                    .ok_or_else(|| CalcError::Value("MIN of empty range".into())),
-                "MAX" => values
-                    .iter()
-                    .cloned()
-                    .reduce(f64::max)
-                    .ok_or_else(|| CalcError::Value("MAX of empty range".into())),
-                "AND" => Ok((values.iter().all(|v| *v != 0.0)) as u8 as f64),
-                "OR" => Ok((values.iter().any(|v| *v != 0.0)) as u8 as f64),
-                _ => unreachable!(),
+                i += 2;
+            }
+            return Err(CalcError::Value("IFS: no condition matched".into()));
+        }
+        // IFERROR(value, fallback): swallow an error in `value`.
+        if up == "IFERROR" {
+            if args.len() != 2 {
+                return Err(CalcError::Value("IFERROR needs 2 arguments".into()));
+            }
+            return match self.eval_expr(&args[0], visiting) {
+                Ok(v) => Ok(v),
+                Err(_) => self.eval_expr(&args[1], visiting),
             };
         }
 
-        // Fixed-arity scalar functions.
-        let mut a = Vec::with_capacity(args.len());
-        for arg in args {
-            a.push(self.eval_expr(arg, visiting)?);
-        }
-        let need = |k: usize| -> Result<(), CalcError> {
-            if a.len() >= k {
-                Ok(())
-            } else {
-                Err(CalcError::Value(format!("{up} needs {k} argument(s)")))
-            }
-        };
-        match up.as_str() {
-            "NOT" => {
-                need(1)?;
-                Ok((a[0] == 0.0) as u8 as f64)
-            }
-            "ABS" => {
-                need(1)?;
-                Ok(a[0].abs())
-            }
-            "INT" => {
-                need(1)?;
-                Ok(a[0].floor())
-            }
-            "SQRT" => {
-                need(1)?;
-                Ok(a[0].sqrt())
-            }
-            "CEILING" => {
-                need(1)?;
-                Ok(a[0].ceil())
-            }
-            "FLOOR" => {
-                need(1)?;
-                Ok(a[0].floor())
-            }
-            "MOD" => {
-                need(2)?;
-                Ok(a[0] % a[1])
-            }
-            "POWER" => {
-                need(2)?;
-                Ok(a[0].powf(a[1]))
-            }
-            "ROUND" => {
-                need(1)?;
-                let digits = a.get(1).copied().unwrap_or(0.0);
-                let factor = 10f64.powf(digits);
-                Ok((a[0] * factor).round() / factor)
-            }
-            _ => Err(CalcError::UnknownFn(name.to_string())),
+        // ----- Registry functions over the flattened value list -----
+        let values = self.flatten_args(args, visiting)?;
+        match functions::call(&up, &values) {
+            Some(Ok(v)) => Ok(v),
+            Some(Err(e)) => Err(CalcError::Value(format!("{up}: {e}"))),
+            None => Err(CalcError::UnknownFn(name.to_string())),
         }
     }
 
@@ -578,6 +529,88 @@ mod tests {
         // grade: >=90 -> 4, >=80 -> 3, else 0
         s.set("A2", "=IF(A1>=90, 4, IF(A1>=80, 3, 0))");
         assert_eq!(s.eval_number("A2").unwrap(), 3.0);
+    }
+
+    #[test]
+    fn function_registry_is_large_and_all_recognized() {
+        // Every advertised name must dispatch (never "unknown function").
+        assert!(
+            FUNCTION_NAMES.len() >= 130,
+            "only {} functions",
+            FUNCTION_NAMES.len()
+        );
+        for name in FUNCTION_NAMES {
+            let got = functions::call(name, &[1.0, 2.0, 3.0, 4.0]);
+            assert!(
+                got.is_some(),
+                "function {name} not recognized by dispatcher"
+            );
+        }
+    }
+
+    #[test]
+    fn trig_and_math_functions() {
+        let mut s = Sheet::new();
+        s.set("A1", "=SIN(0)");
+        s.set("A2", "=COS(0)");
+        s.set("A3", "=DEGREES(PI())");
+        s.set("A4", "=LOG(8, 2)");
+        s.set("A5", "=GCD(12, 18)");
+        s.set("A6", "=LCM(4, 6)");
+        s.set("A7", "=EXP(0)");
+        assert_eq!(s.eval_number("A1").unwrap(), 0.0);
+        assert_eq!(s.eval_number("A2").unwrap(), 1.0);
+        assert!((s.eval_number("A3").unwrap() - 180.0).abs() < 1e-9);
+        assert!((s.eval_number("A4").unwrap() - 3.0).abs() < 1e-9);
+        assert_eq!(s.eval_number("A5").unwrap(), 6.0);
+        assert_eq!(s.eval_number("A6").unwrap(), 12.0);
+        assert_eq!(s.eval_number("A7").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn statistics_functions() {
+        let mut s = Sheet::new();
+        for (i, v) in [2, 4, 4, 4, 5, 5, 7, 9].iter().enumerate() {
+            s.set(&format!("A{}", i + 1), &v.to_string());
+        }
+        s.set("B1", "=AVERAGE(A1:A8)");
+        s.set("B2", "=MEDIAN(A1:A8)");
+        s.set("B3", "=STDEVP(A1:A8)");
+        s.set("B4", "=VARP(A1:A8)");
+        s.set("B5", "=MODE(A1:A8)");
+        assert_eq!(s.eval_number("B1").unwrap(), 5.0);
+        assert_eq!(s.eval_number("B2").unwrap(), 4.5);
+        assert!((s.eval_number("B3").unwrap() - 2.0).abs() < 1e-9);
+        assert_eq!(s.eval_number("B4").unwrap(), 4.0);
+        assert_eq!(s.eval_number("B5").unwrap(), 4.0);
+    }
+
+    #[test]
+    fn financial_functions() {
+        let mut s = Sheet::new();
+        // Loan: 5%/yr over 10 yrs, PV 1000.
+        s.set("A1", "=PMT(0.05, 10, 1000)");
+        s.set("A2", "=FV(0.05, 10, -100)");
+        s.set("A3", "=NPV(0.1, 100, 100, 100)");
+        s.set("A4", "=SLN(1000, 100, 10)");
+        assert!((s.eval_number("A1").unwrap() - -129.504575).abs() < 1e-3);
+        assert!((s.eval_number("A2").unwrap() - 1257.78925).abs() < 1e-2);
+        assert!((s.eval_number("A3").unwrap() - 248.685).abs() < 1e-2);
+        assert_eq!(s.eval_number("A4").unwrap(), 90.0);
+    }
+
+    #[test]
+    fn forecasting_functions() {
+        // Perfect line y = 2x + 1 over x = 1..4  → known_y then known_x.
+        let mut s = Sheet::new();
+        s.set("A1", "=SLOPE(3, 5, 7, 9, 1, 2, 3, 4)");
+        s.set("A2", "=INTERCEPT(3, 5, 7, 9, 1, 2, 3, 4)");
+        s.set("A3", "=RSQ(3, 5, 7, 9, 1, 2, 3, 4)");
+        s.set("A4", "=FORECAST(10, 3, 5, 7, 9, 1, 2, 3, 4)"); // y at x=10
+        assert!((s.eval_number("A1").unwrap() - 2.0).abs() < 1e-9);
+        assert!((s.eval_number("A2").unwrap() - 1.0).abs() < 1e-9);
+        assert!((s.eval_number("A3").unwrap() - 1.0).abs() < 1e-9);
+        assert!((s.eval_number("A4").unwrap() - 21.0).abs() < 1e-9);
     }
 
     #[test]

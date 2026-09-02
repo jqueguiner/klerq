@@ -5,6 +5,7 @@
 //! Run with: `cargo run --bin klerq-gui`
 
 use eframe::egui;
+use klerq_calc::FUNCTION_NAMES;
 use klerq_desktop::Workspace;
 use klerq_writer::Align;
 
@@ -399,6 +400,22 @@ impl KlerqApp {
     // ---- Calc ----
     fn calc_view(&mut self, ui: &mut egui::Ui) {
         ui.heading(format!("🔢 {}", self.ws.t("app-calc")));
+        ui.add_space(6.0);
+        egui::CollapsingHeader::new(format!("ƒ Functions ({})", FUNCTION_NAMES.len()))
+            .id_source("fn-palette")
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for name in FUNCTION_NAMES {
+                        if ui
+                            .selectable_label(false, egui::RichText::new(*name).monospace().small())
+                            .on_hover_text("Click to start this formula")
+                            .clicked()
+                        {
+                            self.cell_buf = format!("={name}(");
+                        }
+                    }
+                });
+            });
         ui.add_space(6.0);
         let sel_addr = self.addr(self.sel_col, self.sel_row);
         ui.horizontal(|ui| {
