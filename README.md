@@ -70,7 +70,9 @@ Plugins), a localized menu bar, dark/light theme, and a live language switcher:
 
 - **Writer** — add/select paragraphs, toggle bold, undo/redo (Enter to add).
 - **Calc** — clickable A1–H20 grid, a formula bar (`=SUM(B2:B3)`), live recalc,
-  `#ERR` on bad refs/cycles.
+  `#ERR` on bad refs/cycles. Functions: SUM/AVERAGE/MIN/MAX/COUNT/PRODUCT,
+  logic `IF`/`AND`/`OR`/`NOT` with `= <> < > <= >=` comparisons, and math
+  ABS/INT/ROUND/MOD/POWER/SQRT/CEILING/FLOOR.
 - **Slides** — slide list, a slide canvas that renders text-box shapes, add slides
   and boxes.
 - **Plugins** — a JS code editor + input; run a community `transform(text)` in the

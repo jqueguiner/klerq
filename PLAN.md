@@ -65,7 +65,10 @@ klerq/
 - **Phase 9 — OOXML interop** ✅ `klerq-ooxml`: read/write `.docx` (paragraphs + bold/italic/underline), `.xlsx` (inline-string/number/formula cells), `.pptx` (slide titles + text boxes). Real OPC zip + XML via pure-Rust `zip`+`quick-xml`. Wired into GUI File ▸ Export/Import MS Office. (13 tests)
 - **Phase 10 — PPTX full compliance** ⏳ slide masters/layouts for full PowerPoint fidelity; shared-strings table for XLSX.
 
-**Current status:** 81 tests green; `cargo test`, `cargo clippy -D warnings`,
+- **Calc engine (ongoing)** ✅ comparisons `= <> < > <= >=`, lazy `IF`, `AND/OR/NOT`, `PRODUCT`, `ABS/INT/ROUND/MOD/POWER/SQRT/CEILING/FLOOR` added on top of SUM/AVERAGE/MIN/MAX/COUNT.
+- **i18n (ongoing)** ✅ 14 bundled locales incl RTL Arabic + Hebrew, parity-tested; GUI rail mirrors under RTL.
+
+**Current status:** 93 tests green; `cargo test`, `cargo clippy -D warnings`,
 `cargo fmt --check` all pass. GUI builds on all desktop targets.
 
 ## Definition of done (per crate)

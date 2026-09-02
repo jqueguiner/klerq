@@ -29,6 +29,12 @@ pub enum Expr {
         name: String,
         args: Vec<Expr>,
     },
+    /// Comparison producing 1.0 (true) or 0.0 (false).
+    Cmp {
+        op: String,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +42,8 @@ enum Tok {
     Num(f64),
     Ident(String),
     Punct(char),
+    /// Comparison operator: `=`, `<`, `>`, `<=`, `>=`, `<>`.
+    Cmp(String),
 }
 
 fn tokenize(src: &str) -> Result<Vec<Tok>, String> {
@@ -60,6 +68,19 @@ fn tokenize(src: &str) -> Result<Vec<Tok>, String> {
                 i += 1;
             }
             toks.push(Tok::Ident(chars[start..i].iter().collect()));
+        } else if c == '<' || c == '>' || c == '=' {
+            // Comparison operators, including two-char <=, >=, <>.
+            let next = chars.get(i + 1).copied();
+            let op = match (c, next) {
+                ('<', Some('=')) => "<=",
+                ('>', Some('=')) => ">=",
+                ('<', Some('>')) => "<>",
+                ('<', _) => "<",
+                ('>', _) => ">",
+                _ => "=",
+            };
+            i += op.len();
+            toks.push(Tok::Cmp(op.to_string()));
         } else if "+-*/(),:".contains(c) {
             toks.push(Tok::Punct(c));
             i += 1;
@@ -95,7 +116,22 @@ impl Parser {
         }
     }
 
+    /// Lowest precedence: comparisons over additive expressions.
     fn expr(&mut self) -> Result<Expr, String> {
+        let mut lhs = self.add_sub()?;
+        while let Some(Tok::Cmp(op)) = self.peek().cloned() {
+            self.pos += 1;
+            let rhs = self.add_sub()?;
+            lhs = Expr::Cmp {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn add_sub(&mut self) -> Result<Expr, String> {
         let mut lhs = self.term()?;
         while let Some(Tok::Punct(op @ ('+' | '-'))) = self.peek().cloned() {
             self.pos += 1;
@@ -226,6 +262,31 @@ mod tests {
                 args: vec![Expr::Range("A1".into(), "A3".into()), Expr::Number(5.0)],
             }
         );
+    }
+
+    #[test]
+    fn parses_comparison_below_arithmetic() {
+        // 1+2>2 parses as (1+2) > 2
+        assert_eq!(
+            parse("1+2>2").unwrap(),
+            Expr::Cmp {
+                op: ">".into(),
+                lhs: Box::new(Expr::BinOp {
+                    op: '+',
+                    lhs: Box::new(Expr::Number(1.0)),
+                    rhs: Box::new(Expr::Number(2.0)),
+                }),
+                rhs: Box::new(Expr::Number(2.0)),
+            }
+        );
+    }
+
+    #[test]
+    fn tokenizes_two_char_operators() {
+        for op in ["<=", ">=", "<>"] {
+            let e = parse(&format!("1{op}2")).unwrap();
+            assert!(matches!(e, Expr::Cmp { op: o, .. } if o == op));
+        }
     }
 
     #[test]

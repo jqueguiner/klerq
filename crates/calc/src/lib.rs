@@ -3,8 +3,11 @@
 //! A [`Sheet`] holds cells addressed in A1 notation. A cell is a literal
 //! (number / text) or a `=formula`. Formulas support:
 //! - arithmetic `+ - * /`, parentheses, unary minus
+//! - comparisons `= <> < > <= >=` (yield 1/0), usable in `IF`
 //! - cell references (`A1`) and ranges (`A1:B3`)
-//! - functions `SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`
+//! - aggregate fns `SUM`, `PRODUCT`, `AVERAGE`, `MIN`, `MAX`, `COUNT`, `AND`, `OR`
+//! - logic/math fns `IF` (lazy), `NOT`, `ABS`, `INT`, `ROUND`, `MOD`, `POWER`,
+//!   `SQRT`, `CEILING`, `FLOOR`
 //!
 //! Evaluation is recursive with **cycle detection**, so `A1=B1`, `B1=A1`
 //! yields a [`CalcError::Cycle`] instead of hanging.
@@ -208,6 +211,20 @@ impl Sheet {
                     _ => unreachable!(),
                 })
             }
+            Expr::Cmp { op, lhs, rhs } => {
+                let l = self.eval_expr(lhs, visiting)?;
+                let r = self.eval_expr(rhs, visiting)?;
+                let truth = match op.as_str() {
+                    "=" => l == r,
+                    "<>" => l != r,
+                    "<" => l < r,
+                    ">" => l > r,
+                    "<=" => l <= r,
+                    ">=" => l >= r,
+                    _ => unreachable!(),
+                };
+                Ok(if truth { 1.0 } else { 0.0 })
+            }
             Expr::Call { name, args } => self.eval_call(name, args, visiting),
             Expr::Range(a, b) => {
                 // A bare range only makes sense inside a function; evaluating it
@@ -223,28 +240,103 @@ impl Sheet {
         args: &[Expr],
         visiting: &mut HashSet<(u32, u32)>,
     ) -> Result<f64, CalcError> {
-        let values = self.flatten_args(args, visiting)?;
         let up = name.to_ascii_uppercase();
-        match up.as_str() {
-            "SUM" => Ok(values.iter().sum()),
-            "COUNT" => Ok(values.len() as f64),
-            "AVERAGE" => {
-                if values.is_empty() {
-                    Err(CalcError::Value("AVERAGE of empty range".into()))
-                } else {
-                    Ok(values.iter().sum::<f64>() / values.len() as f64)
-                }
+
+        // IF is lazy: only the taken branch is evaluated (so the untaken branch
+        // may reference erroring/cyclic cells without failing the whole formula).
+        if up == "IF" {
+            if args.len() != 3 {
+                return Err(CalcError::Value("IF needs 3 arguments".into()));
             }
-            "MIN" => values
-                .iter()
-                .cloned()
-                .reduce(f64::min)
-                .ok_or_else(|| CalcError::Value("MIN of empty range".into())),
-            "MAX" => values
-                .iter()
-                .cloned()
-                .reduce(f64::max)
-                .ok_or_else(|| CalcError::Value("MAX of empty range".into())),
+            let cond = self.eval_expr(&args[0], visiting)?;
+            let branch = if cond != 0.0 { &args[1] } else { &args[2] };
+            return self.eval_expr(branch, visiting);
+        }
+
+        // Aggregate functions flatten ranges into a value list.
+        if matches!(
+            up.as_str(),
+            "SUM" | "PRODUCT" | "COUNT" | "AVERAGE" | "MIN" | "MAX" | "AND" | "OR"
+        ) {
+            let values = self.flatten_args(args, visiting)?;
+            return match up.as_str() {
+                "SUM" => Ok(values.iter().sum()),
+                "PRODUCT" => Ok(values.iter().product()),
+                "COUNT" => Ok(values.len() as f64),
+                "AVERAGE" => {
+                    if values.is_empty() {
+                        Err(CalcError::Value("AVERAGE of empty range".into()))
+                    } else {
+                        Ok(values.iter().sum::<f64>() / values.len() as f64)
+                    }
+                }
+                "MIN" => values
+                    .iter()
+                    .cloned()
+                    .reduce(f64::min)
+                    .ok_or_else(|| CalcError::Value("MIN of empty range".into())),
+                "MAX" => values
+                    .iter()
+                    .cloned()
+                    .reduce(f64::max)
+                    .ok_or_else(|| CalcError::Value("MAX of empty range".into())),
+                "AND" => Ok((values.iter().all(|v| *v != 0.0)) as u8 as f64),
+                "OR" => Ok((values.iter().any(|v| *v != 0.0)) as u8 as f64),
+                _ => unreachable!(),
+            };
+        }
+
+        // Fixed-arity scalar functions.
+        let mut a = Vec::with_capacity(args.len());
+        for arg in args {
+            a.push(self.eval_expr(arg, visiting)?);
+        }
+        let need = |k: usize| -> Result<(), CalcError> {
+            if a.len() >= k {
+                Ok(())
+            } else {
+                Err(CalcError::Value(format!("{up} needs {k} argument(s)")))
+            }
+        };
+        match up.as_str() {
+            "NOT" => {
+                need(1)?;
+                Ok((a[0] == 0.0) as u8 as f64)
+            }
+            "ABS" => {
+                need(1)?;
+                Ok(a[0].abs())
+            }
+            "INT" => {
+                need(1)?;
+                Ok(a[0].floor())
+            }
+            "SQRT" => {
+                need(1)?;
+                Ok(a[0].sqrt())
+            }
+            "CEILING" => {
+                need(1)?;
+                Ok(a[0].ceil())
+            }
+            "FLOOR" => {
+                need(1)?;
+                Ok(a[0].floor())
+            }
+            "MOD" => {
+                need(2)?;
+                Ok(a[0] % a[1])
+            }
+            "POWER" => {
+                need(2)?;
+                Ok(a[0].powf(a[1]))
+            }
+            "ROUND" => {
+                need(1)?;
+                let digits = a.get(1).copied().unwrap_or(0.0);
+                let factor = 10f64.powf(digits);
+                Ok((a[0] * factor).round() / factor)
+            }
             _ => Err(CalcError::UnknownFn(name.to_string())),
         }
     }
@@ -402,6 +494,90 @@ mod tests {
         s.set("C3", "9");
         s.set("B2", ""); // empty → ignored
         assert_eq!(s.extent(), Some((2, 2))); // C3 => col2,row2
+    }
+
+    #[test]
+    fn comparison_operators() {
+        let mut s = Sheet::new();
+        s.set("A1", "5");
+        s.set("B1", "=A1>3");
+        s.set("B2", "=A1<3");
+        s.set("B3", "=A1=5");
+        s.set("B4", "=A1<>5");
+        s.set("B5", "=A1>=5");
+        s.set("B6", "=A1<=4");
+        assert_eq!(s.eval_number("B1").unwrap(), 1.0);
+        assert_eq!(s.eval_number("B2").unwrap(), 0.0);
+        assert_eq!(s.eval_number("B3").unwrap(), 1.0);
+        assert_eq!(s.eval_number("B4").unwrap(), 0.0);
+        assert_eq!(s.eval_number("B5").unwrap(), 1.0);
+        assert_eq!(s.eval_number("B6").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn if_function_picks_branch() {
+        let mut s = Sheet::new();
+        s.set("A1", "12");
+        s.set("A2", "=IF(A1>10, 100, 0)");
+        s.set("A3", "=IF(A1>100, 100, 0)");
+        assert_eq!(s.eval_number("A2").unwrap(), 100.0);
+        assert_eq!(s.eval_number("A3").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn if_is_lazy_untaken_branch_not_evaluated() {
+        let mut s = Sheet::new();
+        s.set("C1", "=C1"); // self-cyclic cell
+        s.set("A1", "=IF(1, 42, C1)"); // false branch (C1) must not be touched
+        assert_eq!(s.eval_number("A1").unwrap(), 42.0);
+    }
+
+    #[test]
+    fn logical_functions() {
+        let mut s = Sheet::new();
+        s.set("A1", "1");
+        s.set("A2", "0");
+        assert_eq!(s.eval_number("A1").unwrap(), 1.0);
+        s.set("B1", "=AND(A1, 1, 5)");
+        s.set("B2", "=AND(A1, A2)");
+        s.set("B3", "=OR(A2, 0, 3)");
+        s.set("B4", "=NOT(A2)");
+        assert_eq!(s.eval_number("B1").unwrap(), 1.0);
+        assert_eq!(s.eval_number("B2").unwrap(), 0.0);
+        assert_eq!(s.eval_number("B3").unwrap(), 1.0);
+        assert_eq!(s.eval_number("B4").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn math_functions() {
+        let mut s = Sheet::new();
+        s.set("A1", "=ABS(-7)");
+        s.set("A2", "=ROUND(1.23456, 2)");
+        s.set("A3", "=MOD(10, 3)");
+        s.set("A4", "=POWER(2, 10)");
+        s.set("A5", "=SQRT(144)");
+        s.set("A6", "=INT(3.9)");
+        s.set("A7", "=PRODUCT(2, 3, 4)");
+        s.set("A8", "=CEILING(4.1)");
+        s.set("A9", "=FLOOR(4.9)");
+        assert_eq!(s.eval_number("A1").unwrap(), 7.0);
+        assert_eq!(s.eval_number("A2").unwrap(), 1.23);
+        assert_eq!(s.eval_number("A3").unwrap(), 1.0);
+        assert_eq!(s.eval_number("A4").unwrap(), 1024.0);
+        assert_eq!(s.eval_number("A5").unwrap(), 12.0);
+        assert_eq!(s.eval_number("A6").unwrap(), 3.0);
+        assert_eq!(s.eval_number("A7").unwrap(), 24.0);
+        assert_eq!(s.eval_number("A8").unwrap(), 5.0);
+        assert_eq!(s.eval_number("A9").unwrap(), 4.0);
+    }
+
+    #[test]
+    fn nested_if_with_functions() {
+        let mut s = Sheet::new();
+        s.set("A1", "85");
+        // grade: >=90 -> 4, >=80 -> 3, else 0
+        s.set("A2", "=IF(A1>=90, 4, IF(A1>=80, 3, 0))");
+        assert_eq!(s.eval_number("A2").unwrap(), 3.0);
     }
 
     #[test]
