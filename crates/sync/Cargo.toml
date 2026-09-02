@@ -1,0 +1,13 @@
+[package]
+name = "klerq-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Klerq real-time collaboration — CRDTs for convergent multi-user editing (Google-Docs-style)."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

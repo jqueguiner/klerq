@@ -127,6 +127,14 @@ versioned JSON envelope that round-trips losslessly (formulas preserved). The
 `klerq-format` crate also does interop: Writer ⇄ plain text, Calc ⇄ CSV
 (evaluated values out, `=formulas` in), Slides ⇄ Markdown-ish outline.
 
+**Real-time collaboration (Google-Docs-style).** `klerq-sync` gives documents
+CRDT-based live sync — every replica edits locally and converges with no central
+server or locking. Calc uses a last-writer-wins grid (Lamport-stamped, site
+tiebreak); text uses a Logoot sequence CRDT so concurrent inserts interleave
+deterministically. Ops are `serde`-serializable, so any transport works; the AI
+tab has an ops-exchange panel (a WebSocket relay automates it). Convergence is
+unit-tested (concurrent conflicts, out-of-order and duplicate delivery).
+
 **Structured data import.** The AI tab imports **CSV, JSON and XML** into Calc —
 paste it or pull from a URL (format auto-detected). A JSON array of objects
 becomes rows × the union of keys (`{data:[…]}` envelopes are unwrapped); XML

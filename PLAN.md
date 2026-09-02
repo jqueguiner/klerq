@@ -68,7 +68,9 @@ klerq/
 - **Calc engine (ongoing)** ✅ comparisons `= <> < > <= >=`, lazy `IF`, `AND/OR/NOT`, `PRODUCT`, `ABS/INT/ROUND/MOD/POWER/SQRT/CEILING/FLOOR` added on top of SUM/AVERAGE/MIN/MAX/COUNT.
 - **i18n (ongoing)** ✅ 14 bundled locales incl RTL Arabic + Hebrew, parity-tested; GUI rail mirrors under RTL.
 - **Calc functions (ongoing)** ✅ **211-function** library via `functions.rs` registry + GUI palette. Standard: math/trig/stats/financial/forecasting. **Disruptive (not in Excel):** neural-net activations (SIGMOID/RELU/GELU/SWISH/MISH…), ML metrics & similarity (MSE/RMSE/R2/COSINE/EUCLID/KLDIV/CROSSENTROPY…), quant finance (CAGR/SHARPE/SORTINO/MAXDRAWDOWN/EWMA/BETA), info stats (ENTROPY/GINI/LOGSUMEXP/IQR/MAD), shaping (CLAMP/LERP/REMAP/SMOOTHSTEP), geo (HAVERSINE), number theory (ISPRIME/FIB/POPCOUNT).
-- **AI (ongoing)** ✅ `klerq-ai` crate: OpenAI/Anthropic/Gemini/OpenAI-compatible providers, locally-stored config+key, request-build + response-parse tested; GUI AI tab: NL→formula assistant grounded in the function library, plus CSV-from-URL data import.
+- **AI (ongoing)** ✅ `klerq-ai` crate: OpenAI/Anthropic/Gemini/OpenAI-compatible providers, locally-stored config+key, request-build + response-parse tested; GUI AI tab: NL→formula assistant grounded in the function library, plus CSV/JSON/XML data import (paste or URL, autodetected).
+- **Realtime collaboration (ongoing)** ✅ `klerq-sync` CRDT crate: LWW grid for Calc + Logoot sequence for text, convergence + out-of-order/duplicate delivery tested; serde-serializable ops; Workspace collab API + GUI ops-exchange panel. Transport (WebSocket relay) is the thin remaining layer.
+- **Next up:** value-typed engine (unlocks TEXT/DATE function families) · live/refreshable data connections (SQL, polling) · WebSocket collab relay · full PPTX master/layout fidelity.
 
 **Current status:** 93 tests green; `cargo test`, `cargo clippy -D warnings`,
 `cargo fmt --check` all pass. GUI builds on all desktop targets.

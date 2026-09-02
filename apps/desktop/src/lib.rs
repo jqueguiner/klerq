@@ -71,8 +71,22 @@ pub struct Workspace {
     pub slides: Presentation,
     /// AI provider configuration (key, model, base URL).
     pub ai: klerq_ai::AiConfig,
+    /// Real-time collaboration session (CRDT) for Calc.
+    pub collab: klerq_sync::Session,
     writer_stack: CommandStack<TextDocument>,
     slides_stack: CommandStack<Presentation>,
+}
+
+/// Convert a zero-based (col,row) to an A1 address.
+fn col_row_to_a1(col: u32, row: u32) -> String {
+    let mut c = col + 1;
+    let mut letters = String::new();
+    while c > 0 {
+        let rem = (c - 1) % 26;
+        letters.insert(0, (b'A' + rem as u8) as char);
+        c = (c - 1) / 26;
+    }
+    format!("{letters}{}", row + 1)
 }
 
 impl Workspace {
@@ -89,6 +103,7 @@ impl Workspace {
             calc: Sheet::new(),
             slides: Presentation::new(),
             ai: klerq_ai::AiConfig::new(klerq_ai::Provider::OpenAI, ""),
+            collab: klerq_sync::Session::new(std::process::id() as u64),
             writer_stack: CommandStack::new(),
             slides_stack: CommandStack::new(),
         }
@@ -368,6 +383,44 @@ impl Workspace {
         } else {
             Ok(self.import_csv_text(&body))
         }
+    }
+
+    /// This replica's collaboration id.
+    pub fn collab_site(&self) -> u64 {
+        self.collab.site
+    }
+
+    /// Edit a cell AND record a broadcastable collaboration op.
+    pub fn collab_set_cell(&mut self, a1: &str, input: &str) {
+        self.calc.set(a1, input);
+        if let Some(addr) = klerq_calc::parse_a1(a1) {
+            let value = if input.is_empty() {
+                None
+            } else {
+                Some(input.to_string())
+            };
+            self.collab.set_cell(addr.col, addr.row, value);
+        }
+    }
+
+    /// Serialize local edits to JSON to send to collaborators.
+    pub fn collab_export(&mut self) -> String {
+        self.collab.export_ops()
+    }
+
+    /// Apply collaborators' edits (JSON ops) and mirror them into the live sheet.
+    pub fn collab_import(&mut self, json: &str) -> Result<usize, String> {
+        let n = self.collab.import_ops(json)?;
+        let cells: Vec<(u32, u32, String)> = self
+            .collab
+            .calc
+            .cells()
+            .map(|(c, r, s)| (c, r, s.to_string()))
+            .collect();
+        for (c, r, s) in cells {
+            self.calc.set(&col_row_to_a1(c, r), &s);
+        }
+        Ok(n)
     }
 
     /// One-line localized status summarizing the session.
@@ -687,6 +740,29 @@ mod tests {
         .unwrap();
         assert_eq!(ws.calc.raw("A1"), klerq_calc::Cell::Text("name".into()));
         assert_eq!(ws.calc.eval_number("B3").unwrap(), 2.0);
+    }
+
+    #[test]
+    fn collab_edits_sync_between_two_workspaces() {
+        let mut alice = Workspace::new();
+        let mut bob = Workspace::new();
+
+        alice.collab_set_cell("A1", "10");
+        alice.collab_set_cell("A2", "=A1*2");
+        let wire = alice.collab_export();
+
+        let n = bob.collab_import(&wire).unwrap();
+        assert_eq!(n, 2);
+        // Bob's live sheet reflects Alice's edits and recomputes formulas.
+        assert_eq!(bob.calc.eval_number("A1").unwrap(), 10.0);
+        assert_eq!(bob.calc.eval_number("A2").unwrap(), 20.0);
+    }
+
+    #[test]
+    fn a1_conversion_roundtrips() {
+        assert_eq!(col_row_to_a1(0, 0), "A1");
+        assert_eq!(col_row_to_a1(26, 0), "AA1");
+        assert_eq!(col_row_to_a1(1, 4), "B5");
     }
 
     #[test]

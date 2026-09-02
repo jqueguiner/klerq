@@ -2311,6 +2311,7 @@ dependencies = [
  "klerq-ooxml",
  "klerq-plugin",
  "klerq-slides",
+ "klerq-sync",
  "klerq-writer",
 ]
 
@@ -2363,6 +2364,14 @@ name = "klerq-slides"
 version = "0.1.0"
 dependencies = [
  "klerq-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "klerq-sync"
+version = "0.1.0"
+dependencies = [
  "serde",
  "serde_json",
 ]

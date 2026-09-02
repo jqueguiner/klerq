@@ -10,6 +10,7 @@ members = [
     "crates/format",
     "crates/ooxml",
     "crates/ai",
+    "crates/sync",
     "apps/desktop",
 ]
 
@@ -39,6 +40,7 @@ klerq-slides = { path = "crates/slides" }
 klerq-format = { path = "crates/format" }
 klerq-ooxml = { path = "crates/ooxml" }
 klerq-ai = { path = "crates/ai" }
+klerq-sync = { path = "crates/sync" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = "0.36"
 ureq = "2"

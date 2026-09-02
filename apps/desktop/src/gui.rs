@@ -68,6 +68,9 @@ struct KlerqApp {
     ai_status: String,
     csv_url: String,
     data_paste: String,
+    // Collaboration
+    collab_buf: String,
+    collab_status: String,
     // File I/O feedback
     file_status: String,
 }
@@ -112,6 +115,8 @@ impl KlerqApp {
             ai_status: String::new(),
             csv_url: String::new(),
             data_paste: String::new(),
+            collab_buf: String::new(),
+            collab_status: String::new(),
             file_status: String::new(),
         };
         apply_theme(&cc.egui_ctx, app.dark);
@@ -445,7 +450,8 @@ impl KlerqApp {
             );
             let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             if ui.button("✓ Set").clicked() || enter {
-                self.ws.set_cell(&sel_addr, &self.cell_buf);
+                // Route through collab so the edit is broadcastable.
+                self.ws.collab_set_cell(&sel_addr, &self.cell_buf);
             }
         });
         ui.add_space(8.0);
@@ -790,6 +796,50 @@ impl KlerqApp {
         if !self.ai_status.is_empty() {
             ui.add_space(8.0);
             ui.label(egui::RichText::new(&self.ai_status).weak());
+        }
+
+        ui.add_space(12.0);
+        ui.separator();
+        // ----- Real-time collaboration (CRDT) -----
+        ui.label(
+            egui::RichText::new(format!(
+                "🔗 Collaboration — replica #{}",
+                self.ws.collab_site()
+            ))
+            .strong(),
+        );
+        ui.label(
+            egui::RichText::new(
+                "Calc edits converge across replicas (Google-Docs-style). Exchange the ops \
+                 below over any channel; a WebSocket relay automates it.",
+            )
+            .small()
+            .weak(),
+        );
+        ui.horizontal(|ui| {
+            if ui.button("⇧ Export my edits").clicked() {
+                self.collab_buf = self.ws.collab_export();
+                self.collab_status = "Copied local ops — send to a collaborator".into();
+            }
+            if ui.button("⇩ Apply ops from box").clicked() && !self.collab_buf.trim().is_empty() {
+                self.collab_status = match self.ws.collab_import(&self.collab_buf) {
+                    Ok(n) => {
+                        self.tab = Tab::Calc;
+                        format!("Merged {n} remote op(s)")
+                    }
+                    Err(e) => format!("Merge failed: {e}"),
+                };
+            }
+        });
+        ui.add(
+            egui::TextEdit::multiline(&mut self.collab_buf)
+                .hint_text("collaboration ops (JSON) — paste a peer's here, then Apply")
+                .desired_rows(4)
+                .desired_width(f32::INFINITY)
+                .code_editor(),
+        );
+        if !self.collab_status.is_empty() {
+            ui.label(egui::RichText::new(&self.collab_status).weak());
         }
     }
 }
