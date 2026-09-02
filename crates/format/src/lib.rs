@@ -24,10 +24,15 @@ pub const EXT_WRITER: &str = "klw";
 pub const EXT_CALC: &str = "klc";
 pub const EXT_SLIDES: &str = "kls";
 
+mod data;
+pub use data::{json_to_sheet, json_to_table, table_to_sheet, xml_to_sheet, xml_to_table, Table};
+
 #[derive(Debug, Error, PartialEq)]
 pub enum FormatError {
     #[error("json error: {0}")]
     Json(String),
+    #[error("xml error: {0}")]
+    Xml(String),
     #[error("wrong document kind: expected {expected}, found {found}")]
     WrongKind { expected: String, found: String },
     #[error("unsupported format version: {0}")]

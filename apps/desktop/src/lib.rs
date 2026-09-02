@@ -343,6 +343,33 @@ impl Workspace {
         csv.lines().filter(|l| !l.is_empty()).count()
     }
 
+    /// Import JSON text (array of objects, `{data:[…]}`, …) into Calc.
+    pub fn import_json_text(&mut self, json: &str) -> Result<usize, String> {
+        let sheet = klerq_format::json_to_sheet(json).map_err(|e| e.to_string())?;
+        self.calc = sheet;
+        Ok(self.calc.extent().map(|(_, r)| r as usize).unwrap_or(0))
+    }
+
+    /// Import XML text (records = children of the root) into Calc.
+    pub fn import_xml_text(&mut self, xml: &str) -> Result<usize, String> {
+        let sheet = klerq_format::xml_to_sheet(xml).map_err(|e| e.to_string())?;
+        self.calc = sheet;
+        Ok(self.calc.extent().map(|(_, r)| r as usize).unwrap_or(0))
+    }
+
+    /// Import from a URL, auto-detecting CSV / JSON / XML by content.
+    pub fn import_url(&mut self, url: &str) -> Result<usize, String> {
+        let body = klerq_ai::http_get(url).map_err(|e| e.to_string())?;
+        let trimmed = body.trim_start();
+        if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            self.import_json_text(&body)
+        } else if trimmed.starts_with('<') {
+            self.import_xml_text(&body)
+        } else {
+            Ok(self.import_csv_text(&body))
+        }
+    }
+
     /// One-line localized status summarizing the session.
     pub fn status(&self) -> String {
         let words = self.writer.word_count().to_string();
@@ -639,6 +666,27 @@ mod tests {
         assert_eq!(rows, 3);
         assert_eq!(ws.calc.eval_number("B2").unwrap(), 10.0);
         assert_eq!(ws.calc.eval_number("B3").unwrap(), 15.0);
+    }
+
+    #[test]
+    fn json_text_import_into_calc() {
+        let mut ws = Workspace::new();
+        ws.import_json_text(r#"[{"city":"Paris","pop":2100000},{"city":"Rome","pop":2800000}]"#)
+            .unwrap();
+        assert_eq!(ws.calc.raw("A1"), klerq_calc::Cell::Text("city".into()));
+        assert_eq!(ws.calc.eval_number("B2").unwrap(), 2100000.0);
+        assert_eq!(ws.calc.eval_number("B3").unwrap(), 2800000.0);
+    }
+
+    #[test]
+    fn xml_text_import_into_calc() {
+        let mut ws = Workspace::new();
+        ws.import_xml_text(
+            "<rows><r><name>Ada</name><n>1</n></r><r><name>Bo</name><n>2</n></r></rows>",
+        )
+        .unwrap();
+        assert_eq!(ws.calc.raw("A1"), klerq_calc::Cell::Text("name".into()));
+        assert_eq!(ws.calc.eval_number("B3").unwrap(), 2.0);
     }
 
     #[test]

@@ -67,6 +67,7 @@ struct KlerqApp {
     ai_answer: String,
     ai_status: String,
     csv_url: String,
+    data_paste: String,
     // File I/O feedback
     file_status: String,
 }
@@ -110,6 +111,7 @@ impl KlerqApp {
             ai_answer: String::new(),
             ai_status: String::new(),
             csv_url: String::new(),
+            data_paste: String::new(),
             file_status: String::new(),
         };
         apply_theme(&cc.egui_ctx, app.dark);
@@ -731,22 +733,57 @@ impl KlerqApp {
 
         ui.add_space(12.0);
 
-        // ----- Data connection: import CSV from a URL -----
-        ui.label(egui::RichText::new("Data connection — import CSV from URL").strong());
+        // ----- Data connection: import from a URL (CSV / JSON / XML autodetected) -----
+        ui.label(egui::RichText::new("Data connection — import from URL").strong());
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.csv_url)
-                    .hint_text("https://…/data.csv")
+                    .hint_text("https://…/data.csv | .json | .xml")
                     .desired_width(420.0),
             );
             if ui.button("⭳ Import").clicked() && !self.csv_url.trim().is_empty() {
-                match self.ws.import_csv_url(&self.csv_url) {
+                match self.ws.import_url(&self.csv_url) {
                     Ok(rows) => {
                         self.ai_status = format!("Imported {rows} rows into Calc");
                         self.tab = Tab::Calc;
                     }
                     Err(e) => self.ai_status = format!("Import failed: {e}"),
                 }
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new("…or paste CSV / JSON / XML").strong());
+        ui.add(
+            egui::TextEdit::multiline(&mut self.data_paste)
+                .hint_text("paste rows, a JSON array of objects, or XML records")
+                .desired_rows(5)
+                .desired_width(f32::INFINITY)
+                .code_editor(),
+        );
+        ui.horizontal(|ui| {
+            if ui.button("Import CSV").clicked() && !self.data_paste.trim().is_empty() {
+                let n = self.ws.import_csv_text(&self.data_paste);
+                self.ai_status = format!("Imported {n} CSV rows");
+                self.tab = Tab::Calc;
+            }
+            if ui.button("Import JSON").clicked() && !self.data_paste.trim().is_empty() {
+                self.ai_status = match self.ws.import_json_text(&self.data_paste) {
+                    Ok(n) => {
+                        self.tab = Tab::Calc;
+                        format!("Imported {n} JSON records")
+                    }
+                    Err(e) => format!("JSON import failed: {e}"),
+                };
+            }
+            if ui.button("Import XML").clicked() && !self.data_paste.trim().is_empty() {
+                self.ai_status = match self.ws.import_xml_text(&self.data_paste) {
+                    Ok(n) => {
+                        self.tab = Tab::Calc;
+                        format!("Imported {n} XML records")
+                    }
+                    Err(e) => format!("XML import failed: {e}"),
+                };
             }
         });
 

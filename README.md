@@ -127,6 +127,11 @@ versioned JSON envelope that round-trips losslessly (formulas preserved). The
 `klerq-format` crate also does interop: Writer ⇄ plain text, Calc ⇄ CSV
 (evaluated values out, `=formulas` in), Slides ⇄ Markdown-ish outline.
 
+**Structured data import.** The AI tab imports **CSV, JSON and XML** into Calc —
+paste it or pull from a URL (format auto-detected). A JSON array of objects
+becomes rows × the union of keys (`{data:[…]}` envelopes are unwrapped); XML
+records (children of the root) become rows with element/attribute columns.
+
 **MS Office (OOXML).** File ▸ Export/Import MS Office reads and writes real
 `.docx` / `.xlsx` / `.pptx` — genuine OPC zip packages built with pure-Rust
 `zip` + `quick-xml` (so they work on every target, ARM included):
