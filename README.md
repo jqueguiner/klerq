@@ -31,6 +31,22 @@ spreadsheet (**Calc**) and a presentation tool (**Slides**) — while being:
   workspace is green under `cargo test`, `cargo clippy -D warnings`, and
   `cargo fmt --check`.
 
+## What people hate about Office — and how Klerq answers it
+
+Built from real gripes (Reddit / HN / forums) about Word, Excel and PowerPoint:
+
+| Common complaint | Klerq |
+|---|---|
+| Word "helpfully" auto-corrects/reformats against you | Explicit styles, **no forced autocorrect**; AI edits only when *you* click |
+| PowerPoint is tedious; decks are text-heavy & generic | **AI deck generator** from a topic → punchy bullets |
+| Excel is powerful but bloated; **no dark mode**, no custom shortcuts | Dark mode built in, fast Rust engine, **211 functions** incl. AI formula builder |
+| Subscriptions, telemetry, cloud lock-in | **Free, open-source (MIT/Apache), offline-first**, keys stay local |
+| Weak cross-platform / format fidelity | Windows/macOS/Linux/ARM, real `.docx/.xlsx/.pptx` + native formats |
+| Painful real-time collaboration | **CRDT sync** — converges with no server or lock |
+
+AI lives in **all three apps** (Writer, Slides, Calc), with your choice of
+provider (OpenAI/Anthropic/Gemini/local) and keys stored on your machine.
+
 ## Workspace layout
 
 ```
@@ -69,7 +85,9 @@ cargo run --bin klerq
 A native `egui`/`eframe` window with a left app-rail (Writer · Calc · Slides ·
 Plugins), a localized menu bar, dark/light theme, and a live language switcher:
 
-- **Writer** — add/select paragraphs, toggle bold, undo/redo (Enter to add).
+- **Writer** — add/select paragraphs, bold/italic/underline, alignment,
+  undo/redo. **AI assistant**: Summarize, Rewrite, Continue, Shorten, Expand,
+  Fix grammar, Professional/Casual tone — one click, then replace or append.
 - **Calc** — clickable A1–H20 grid, a formula bar (`=SUM(B2:B3)`), live recalc,
   `#ERR` on bad refs/cycles. **211 functions** (clickable palette): the full
   standard set (math/trig/stats/financial/forecasting) **plus disruptive
@@ -79,7 +97,8 @@ Plugins), a localized menu bar, dark/light theme, and a live language switcher:
   information stats (ENTROPY, GINI, LOGSUMEXP, IQR, MAD), shaping (CLAMP, LERP,
   REMAP, SMOOTHSTEP), geo (HAVERSINE), number theory (ISPRIME, FIB, POPCOUNT).
 - **Slides** — slide list, a slide canvas that renders text-box shapes, add slides
-  and boxes.
+  and boxes. **AI deck generator**: type a topic → a full 5–8 slide deck (title +
+  punchy bullets), no template wrangling.
 - **Plugins** — a JS code editor + input; run a community `transform(text)` in the
   sandbox and see the output.
 - **AI** — configure a provider (**OpenAI**, **Anthropic**, **Gemini**, or any

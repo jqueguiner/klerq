@@ -348,6 +348,40 @@ impl Workspace {
         klerq_ai::chat(&self.ai, None, &[klerq_ai::Msg::user(prompt)]).map_err(|e| e.to_string())
     }
 
+    /// Whole Writer document as plain text.
+    pub fn writer_text(&self) -> String {
+        self.writer.plain_text()
+    }
+
+    /// Run an AI editing action over `text` (Word-style assistant).
+    pub fn writer_ai(&self, action: klerq_ai::WriterAction, text: &str) -> Result<String, String> {
+        klerq_ai::writer_transform(&self.ai, action, text).map_err(|e| e.to_string())
+    }
+
+    /// Replace the Writer document with `text` (one paragraph per line).
+    pub fn writer_set_text(&mut self, text: &str) {
+        self.writer = TextDocument::new();
+        for line in text.split('\n') {
+            self.writer
+                .paragraphs
+                .push(klerq_writer::Paragraph::new(line));
+        }
+    }
+
+    /// Generate a whole slide deck from a topic with AI, replacing the deck.
+    /// Returns the number of slides created.
+    pub fn slides_ai_generate(&mut self, topic: &str) -> Result<usize, String> {
+        let outline =
+            klerq_ai::generate_slide_outline(&self.ai, topic).map_err(|e| e.to_string())?;
+        let deck = klerq_format::slides_from_outline(&outline);
+        let n = deck.slides.len();
+        if n == 0 {
+            return Err("AI returned no slides".into());
+        }
+        self.slides = deck;
+        Ok(n)
+    }
+
     /// Import CSV from a URL (a "data connection") into Calc, replacing the sheet.
     pub fn import_csv_url(&mut self, url: &str) -> Result<usize, String> {
         let body = klerq_ai::http_get(url).map_err(|e| e.to_string())?;
@@ -891,6 +925,23 @@ mod tests {
         assert_eq!(rows, 2);
         assert_eq!(ws.calc.raw("A1"), klerq_calc::Cell::Text("Item".into()));
         assert_eq!(ws.calc.eval_number("B2").unwrap(), 3.0); // formula from grid
+    }
+
+    #[test]
+    fn writer_ai_without_key_errors() {
+        let mut ws = Workspace::new();
+        assert!(ws
+            .writer_ai(klerq_ai::WriterAction::Summarize, "hi there")
+            .is_err());
+        assert!(ws.slides_ai_generate("rust").is_err());
+    }
+
+    #[test]
+    fn writer_set_text_rebuilds_document() {
+        let mut ws = Workspace::new();
+        ws.writer_set_text("first line\nsecond line\nthird");
+        assert_eq!(ws.writer.paragraphs.len(), 3);
+        assert_eq!(ws.writer_text(), "first line\nsecond line\nthird");
     }
 
     #[test]

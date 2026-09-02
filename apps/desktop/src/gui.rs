@@ -5,7 +5,7 @@
 //! Run with: `cargo run --bin klerq-gui`
 
 use eframe::egui;
-use klerq_ai::Provider;
+use klerq_ai::{Provider, WriterAction};
 use klerq_calc::FUNCTION_NAMES;
 use klerq_desktop::Workspace;
 use klerq_writer::Align;
@@ -50,6 +50,11 @@ struct KlerqApp {
     // Writer
     new_para: String,
     sel_para: usize,
+    writer_ai_out: String,
+    writer_ai_status: String,
+    // Slides AI
+    slides_topic: String,
+    slides_ai_status: String,
     // Calc
     sel_col: usize,
     sel_row: usize,
@@ -116,6 +121,10 @@ impl KlerqApp {
             dark: true,
             new_para: String::new(),
             sel_para: 0,
+            writer_ai_out: String::new(),
+            writer_ai_status: String::new(),
+            slides_topic: "The Rust programming language".to_string(),
+            slides_ai_status: String::new(),
             sel_col: 0,
             sel_row: 0,
             cell_buf: String::new(),
@@ -399,6 +408,57 @@ impl KlerqApp {
                 self.ws.set_align(self.sel_para, Align::Right);
             }
         });
+        ui.add_space(6.0);
+        // ----- AI writing assistant -----
+        egui::CollapsingHeader::new("✨ AI assistant")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for action in WriterAction::all() {
+                        if ui.button(action.label()).clicked() {
+                            let text = self.ws.writer_text();
+                            if text.trim().is_empty() {
+                                self.writer_ai_status = "Document is empty".into();
+                            } else {
+                                match self.ws.writer_ai(action, &text) {
+                                    Ok(out) => {
+                                        self.writer_ai_out = out;
+                                        self.writer_ai_status = format!("{} ready", action.label());
+                                    }
+                                    Err(e) => {
+                                        self.writer_ai_out.clear();
+                                        self.writer_ai_status = format!("Error: {e}");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                if !self.writer_ai_out.is_empty() {
+                    ui.add_space(4.0);
+                    egui::Frame::group(ui.style())
+                        .fill(ui.style().visuals.extreme_bg_color)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(egui::RichText::new(&self.writer_ai_out).size(14.0));
+                        });
+                    ui.horizontal(|ui| {
+                        if ui.button("↻ Replace document").clicked() {
+                            let out = self.writer_ai_out.clone();
+                            self.ws.writer_set_text(&out);
+                            self.writer_ai_status = "Replaced document".into();
+                        }
+                        if ui.button("＋ Append").clicked() {
+                            let out = self.writer_ai_out.clone();
+                            self.ws.write_paragraph(&out);
+                            self.writer_ai_status = "Appended".into();
+                        }
+                    });
+                }
+                if !self.writer_ai_status.is_empty() {
+                    ui.label(egui::RichText::new(&self.writer_ai_status).small().weak());
+                }
+            });
         ui.add_space(8.0);
         egui::ScrollArea::vertical().show(ui, |ui| {
             let count = self.ws.writer.paragraphs.len();
@@ -528,6 +588,39 @@ impl KlerqApp {
     // ---- Slides ----
     fn slides_view(&mut self, ui: &mut egui::Ui) {
         ui.heading(format!("🖼 {}", self.ws.t("app-slides")));
+        ui.add_space(6.0);
+        // ----- AI deck generator -----
+        egui::CollapsingHeader::new("✨ Generate a deck with AI")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.slides_topic)
+                            .hint_text("topic, e.g. 'Q3 results' or 'Intro to Rust'")
+                            .desired_width(360.0),
+                    );
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("✨ Generate").strong())
+                                .fill(accent()),
+                        )
+                        .clicked()
+                        && !self.slides_topic.trim().is_empty()
+                    {
+                        let topic = self.slides_topic.clone();
+                        self.slides_ai_status = match self.ws.slides_ai_generate(&topic) {
+                            Ok(n) => {
+                                self.sel_slide = 0;
+                                format!("Generated {n} slides")
+                            }
+                            Err(e) => format!("Error: {e}"),
+                        };
+                    }
+                });
+                if !self.slides_ai_status.is_empty() {
+                    ui.label(egui::RichText::new(&self.slides_ai_status).small().weak());
+                }
+            });
         ui.add_space(6.0);
         ui.horizontal_top(|ui| {
             // Slide list

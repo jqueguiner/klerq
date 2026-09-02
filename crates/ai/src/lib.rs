@@ -319,6 +319,102 @@ pub fn suggest_formula(
     Ok(extract_formula(&reply))
 }
 
+// ===================== Writer AI =====================
+
+/// An AI editing action for Writer (Word analog).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WriterAction {
+    Summarize,
+    Rewrite,
+    Continue,
+    Shorten,
+    Expand,
+    FixGrammar,
+    Professional,
+    Casual,
+}
+
+impl WriterAction {
+    pub fn label(&self) -> &'static str {
+        match self {
+            WriterAction::Summarize => "Summarize",
+            WriterAction::Rewrite => "Rewrite",
+            WriterAction::Continue => "Continue",
+            WriterAction::Shorten => "Shorten",
+            WriterAction::Expand => "Expand",
+            WriterAction::FixGrammar => "Fix grammar",
+            WriterAction::Professional => "Professional tone",
+            WriterAction::Casual => "Casual tone",
+        }
+    }
+
+    fn instruction(&self) -> &'static str {
+        match self {
+            WriterAction::Summarize => "Summarize the text concisely, keeping the key points.",
+            WriterAction::Rewrite => {
+                "Rewrite the text to improve clarity and flow; keep the meaning."
+            }
+            WriterAction::Continue => {
+                "Continue the text naturally for one more coherent paragraph."
+            }
+            WriterAction::Shorten => "Make the text noticeably shorter without losing meaning.",
+            WriterAction::Expand => "Expand the text with more detail and supporting points.",
+            WriterAction::FixGrammar => {
+                "Fix spelling, grammar and punctuation; change nothing else."
+            }
+            WriterAction::Professional => "Rewrite the text in a polished, professional tone.",
+            WriterAction::Casual => "Rewrite the text in a friendly, casual tone.",
+        }
+    }
+
+    pub fn all() -> [WriterAction; 8] {
+        [
+            WriterAction::Summarize,
+            WriterAction::Rewrite,
+            WriterAction::Continue,
+            WriterAction::Shorten,
+            WriterAction::Expand,
+            WriterAction::FixGrammar,
+            WriterAction::Professional,
+            WriterAction::Casual,
+        ]
+    }
+}
+
+/// System prompt for a Writer editing action.
+pub fn writer_system(action: WriterAction) -> String {
+    format!(
+        "You are a precise writing assistant inside a word processor. {} \
+         Return ONLY the resulting text — no preamble, quotes, or commentary.",
+        action.instruction()
+    )
+}
+
+/// Run a Writer AI action over `text`.
+pub fn writer_transform(
+    cfg: &AiConfig,
+    action: WriterAction,
+    text: &str,
+) -> Result<String, AiError> {
+    chat(cfg, Some(&writer_system(action)), &[Msg::user(text)])
+}
+
+// ===================== Slides AI =====================
+
+/// System prompt that makes the model emit a Klerq slide outline.
+pub fn slide_outline_system() -> String {
+    "You are a presentation designer for Klerq Slides. Given a topic, output ONLY \
+     a Markdown outline and nothing else. Use '# Slide Title' for each slide, then \
+     '- bullet' lines under it. Produce 5 to 8 slides, 3 to 5 short bullets each. \
+     First slide is the title slide. Keep bullets punchy (avoid text-heavy slides)."
+        .to_string()
+}
+
+/// Ask the model for a slide outline (Markdown `#`/`-`) on `topic`.
+pub fn generate_slide_outline(cfg: &AiConfig, topic: &str) -> Result<String, AiError> {
+    chat(cfg, Some(&slide_outline_system()), &[Msg::user(topic)])
+}
+
 /// Fetch a URL's body as text — used for "import data from a connection".
 pub fn http_get(url: &str) -> Result<String, AiError> {
     ureq::get(url)
@@ -464,5 +560,31 @@ mod tests {
             chat(&cfg, None, &[Msg::user("hi")]),
             Err(AiError::NoKey)
         ));
+    }
+
+    #[test]
+    fn writer_actions_have_distinct_prompts() {
+        let mut seen = std::collections::HashSet::new();
+        for a in WriterAction::all() {
+            let sys = writer_system(a);
+            assert!(!a.label().is_empty());
+            assert!(sys.contains("Return ONLY"));
+            assert!(seen.insert(sys), "duplicate prompt for {:?}", a);
+        }
+        assert!(writer_system(WriterAction::FixGrammar).contains("grammar"));
+    }
+
+    #[test]
+    fn slide_outline_system_specifies_format() {
+        let s = slide_outline_system();
+        assert!(s.contains("# Slide Title"));
+        assert!(s.contains("- bullet"));
+        assert!(s.contains("5 to 8"));
+    }
+
+    #[test]
+    fn writer_transform_without_key_errors() {
+        let cfg = AiConfig::new(Provider::OpenAI, "");
+        assert!(writer_transform(&cfg, WriterAction::Summarize, "hello").is_err());
     }
 }
