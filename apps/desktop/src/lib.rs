@@ -20,10 +20,46 @@ pub fn fmt_num(n: f64) -> String {
     }
 }
 
-/// Base (fallback) locale source, embedded at build time.
-pub const EN_US_FTL: &str = include_str!("../../../locales/en-US/klerq.ftl");
-/// French locale source.
-pub const FR_FR_FTL: &str = include_str!("../../../locales/fr-FR/klerq.ftl");
+/// Every bundled locale, embedded at build time. The first entry is the
+/// fallback locale. Add a language by dropping a `.ftl` file under `locales/`
+/// and adding one line here.
+pub const LOCALES: &[(&str, &str)] = &[
+    ("en-US", include_str!("../../../locales/en-US/klerq.ftl")),
+    ("fr-FR", include_str!("../../../locales/fr-FR/klerq.ftl")),
+    ("es-ES", include_str!("../../../locales/es-ES/klerq.ftl")),
+    ("de-DE", include_str!("../../../locales/de-DE/klerq.ftl")),
+    ("it-IT", include_str!("../../../locales/it-IT/klerq.ftl")),
+    ("pt-BR", include_str!("../../../locales/pt-BR/klerq.ftl")),
+    ("ru-RU", include_str!("../../../locales/ru-RU/klerq.ftl")),
+    ("ja-JP", include_str!("../../../locales/ja-JP/klerq.ftl")),
+    ("zh-CN", include_str!("../../../locales/zh-CN/klerq.ftl")),
+    ("ko-KR", include_str!("../../../locales/ko-KR/klerq.ftl")),
+    ("hi-IN", include_str!("../../../locales/hi-IN/klerq.ftl")),
+    ("tr-TR", include_str!("../../../locales/tr-TR/klerq.ftl")),
+    ("ar-SA", include_str!("../../../locales/ar-SA/klerq.ftl")),
+    ("he-IL", include_str!("../../../locales/he-IL/klerq.ftl")),
+];
+
+/// Message keys every locale must define (used by the parity test).
+pub const UI_KEYS: &[&str] = &[
+    "app-title",
+    "app-tagline",
+    "menu-file",
+    "menu-edit",
+    "menu-view",
+    "menu-help",
+    "action-new",
+    "action-open",
+    "action-save",
+    "action-undo",
+    "action-redo",
+    "app-writer",
+    "app-calc",
+    "app-slides",
+    "status-words",
+    "status-ready",
+    "greeting",
+];
 
 /// A live Klerq session: one document per app plus localization.
 pub struct Workspace {
@@ -36,12 +72,13 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    /// Build a workspace with English + French locales registered.
+    /// Build a workspace with every bundled locale registered (fallback first).
     pub fn new() -> Self {
-        let mut locale = Localizer::new("en-US", EN_US_FTL).expect("valid en-US ftl");
-        locale
-            .add_locale("fr-FR", FR_FR_FTL)
-            .expect("valid fr-FR ftl");
+        let (fb_loc, fb_src) = LOCALES[0];
+        let mut locale = Localizer::new(fb_loc, fb_src).expect("valid fallback ftl");
+        for (loc, src) in &LOCALES[1..] {
+            locale.add_locale(loc, src).expect("valid ftl");
+        }
         Self {
             locale,
             writer: TextDocument::new(),
@@ -425,6 +462,50 @@ mod tests {
         assert_eq!(ws2.slides.slides[0].title, "Saved deck");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn every_bundled_locale_loads() {
+        let ws = Workspace::new();
+        // new() would panic on any invalid .ftl; assert the full set registered.
+        assert_eq!(ws.locales().len(), LOCALES.len());
+        assert!(ws.locales().len() >= 14);
+    }
+
+    #[test]
+    fn all_locales_define_every_key() {
+        // Parity: each locale's source must define every UI key — no gaps.
+        for (loc, src) in LOCALES {
+            for key in UI_KEYS {
+                assert!(
+                    src.contains(&format!("{key} =")),
+                    "locale {loc} missing key {key}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rtl_locales_flip() {
+        let mut ws = Workspace::new();
+        assert!(!ws.is_rtl());
+        ws.set_locale("ar-SA");
+        assert!(ws.is_rtl());
+        ws.set_locale("he-IL");
+        assert!(ws.is_rtl());
+        ws.set_locale("de-DE");
+        assert!(!ws.is_rtl());
+    }
+
+    #[test]
+    fn sample_translations_resolve() {
+        let mut ws = Workspace::new();
+        ws.set_locale("de-DE");
+        assert_eq!(ws.t("action-save"), "Speichern");
+        ws.set_locale("ja-JP");
+        assert_eq!(ws.t("action-open"), "開く");
+        ws.set_locale("zh-CN");
+        assert_eq!(ws.t("menu-file"), "文件");
     }
 
     #[test]

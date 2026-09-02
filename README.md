@@ -123,11 +123,18 @@ versioned JSON envelope that round-trips losslessly (formulas preserved). The
 - **.pptx** — slide titles and text boxes (a Klerq OOXML subset that round-trips
   in Klerq; full PowerPoint master/layout fidelity is the next phase).
 
-## Adding a language
+## Languages
 
-Copy `locales/en-US/klerq.ftl` to `locales/<your-locale>/klerq.ftl`, translate
-the values (keep the keys), and register it with
-`Localizer::add_locale("<locale>", ftl_source)`. RTL is detected automatically.
+Klerq ships **14 locales** out of the box — English, French, Spanish, German,
+Italian, Portuguese (BR), Russian, Japanese, Simplified Chinese, Korean, Hindi,
+Turkish, plus right-to-left **Arabic** and **Hebrew** (the whole UI mirrors for
+RTL). Switch live from the rail; a parity test enforces that every locale
+defines every UI key.
+
+To add a language: copy `locales/en-US/klerq.ftl` to
+`locales/<your-locale>/klerq.ftl`, translate the values (keep the keys), and add
+one line to the `LOCALES` table in `apps/desktop/src/lib.rs`. RTL is detected
+automatically from the locale tag.
 
 ## Status
 

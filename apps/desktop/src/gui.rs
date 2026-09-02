@@ -210,69 +210,72 @@ impl KlerqApp {
     }
 
     fn side_rail(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("rail")
-            .exact_width(184.0)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.add_space(10.0);
-                ui.label(
-                    egui::RichText::new("Klerq")
-                        .size(24.0)
-                        .strong()
-                        .color(accent()),
-                );
-                ui.label(egui::RichText::new(self.ws.t("app-tagline")).small().weak());
-                ui.add_space(12.0);
+        // Mirror the rail to the right for right-to-left languages.
+        let panel = if self.ws.is_rtl() {
+            egui::SidePanel::right("rail")
+        } else {
+            egui::SidePanel::left("rail")
+        };
+        panel.exact_width(184.0).resizable(false).show(ctx, |ui| {
+            ui.add_space(10.0);
+            ui.label(
+                egui::RichText::new("Klerq")
+                    .size(24.0)
+                    .strong()
+                    .color(accent()),
+            );
+            ui.label(egui::RichText::new(self.ws.t("app-tagline")).small().weak());
+            ui.add_space(12.0);
 
-                let items = [
-                    (Tab::Writer, "📝", self.ws.t("app-writer")),
-                    (Tab::Calc, "🔢", self.ws.t("app-calc")),
-                    (Tab::Slides, "🖼", self.ws.t("app-slides")),
-                    (Tab::Plugins, "🧩", "Plugins".to_string()),
-                ];
-                for (tab, icon, label) in items {
-                    let selected = self.tab == tab;
-                    let text = egui::RichText::new(format!("{icon}  {label}")).size(15.0);
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 34.0],
-                            egui::SelectableLabel::new(selected, text),
-                        )
-                        .clicked()
-                    {
-                        self.tab = tab;
-                    }
+            let items = [
+                (Tab::Writer, "📝", self.ws.t("app-writer")),
+                (Tab::Calc, "🔢", self.ws.t("app-calc")),
+                (Tab::Slides, "🖼", self.ws.t("app-slides")),
+                (Tab::Plugins, "🧩", "Plugins".to_string()),
+            ];
+            for (tab, icon, label) in items {
+                let selected = self.tab == tab;
+                let text = egui::RichText::new(format!("{icon}  {label}")).size(15.0);
+                if ui
+                    .add_sized(
+                        [ui.available_width(), 34.0],
+                        egui::SelectableLabel::new(selected, text),
+                    )
+                    .clicked()
+                {
+                    self.tab = tab;
                 }
+            }
 
-                ui.add_space(16.0);
-                ui.separator();
-                ui.label(egui::RichText::new("Language").small().weak());
-                let current = self.ws.locale.current_locale().to_string();
-                egui::ComboBox::from_id_source("locale")
-                    .selected_text(current.clone())
-                    .width(ui.available_width())
-                    .show_ui(ui, |ui| {
-                        for loc in self.ws.locales() {
-                            if ui.selectable_label(loc == current, &loc).clicked() {
-                                self.ws.set_locale(&loc);
-                            }
+            ui.add_space(16.0);
+            ui.separator();
+            ui.label(egui::RichText::new("Language").small().weak());
+            let current = self.ws.locale.current_locale().to_string();
+            egui::ComboBox::from_id_source("locale")
+                .selected_text(current.clone())
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for loc in self.ws.locales() {
+                        if ui.selectable_label(loc == current, &loc).clicked() {
+                            self.ws.set_locale(&loc);
                         }
-                    });
-                if self.ws.is_rtl() {
-                    ui.label(egui::RichText::new("RTL layout").small().color(accent()));
-                }
-
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                    ui.add_space(8.0);
-                    if ui
-                        .button(if self.dark { "☀ Light" } else { "🌙 Dark" })
-                        .clicked()
-                    {
-                        self.dark = !self.dark;
-                        apply_theme(ui.ctx(), self.dark);
                     }
                 });
+            if self.ws.is_rtl() {
+                ui.label(egui::RichText::new("RTL layout").small().color(accent()));
+            }
+
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                ui.add_space(8.0);
+                if ui
+                    .button(if self.dark { "☀ Light" } else { "🌙 Dark" })
+                    .clicked()
+                {
+                    self.dark = !self.dark;
+                    apply_theme(ui.ctx(), self.dark);
+                }
             });
+        });
     }
 
     fn status_bar(&mut self, ctx: &egui::Context) {
