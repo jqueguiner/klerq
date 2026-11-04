@@ -41,6 +41,6 @@ klerq-format = { path = "crates/format" }
 klerq-ooxml = { path = "crates/ooxml" }
 klerq-ai = { path = "crates/ai" }
 klerq-sync = { path = "crates/sync" }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 quick-xml = "0.36"
 ureq = "2"
